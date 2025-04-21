@@ -107,10 +107,9 @@ impl eframe::App for StudyTimerApp {
                     &mut self.debug_tools,
                     &mut self.status,
                 ),
-                Tab::Stats => ui::stats_tab::display(ui, &self.study_data),
-                Tab::Record => ui::record_tab::display(ui, &mut self.study_data, &mut self.status),
+                Tab::Stats => ui::stats_tab::display(ui, &mut self.study_data, &mut self.status),
+                Tab::Record => ui::record_tab::display(ui, &mut self.study_data, &mut self.status, &self.timer),
             }
         });
     }
 }
-

@@ -1,5 +1,6 @@
 use crate::app::StatusMessage;
 use crate::data::StudyData;
+use crate::timer::Timer; // Import Timer
 use chrono::{Local, NaiveDate};
 use eframe::egui;
 use eframe::egui::Ui;
@@ -26,9 +27,15 @@ thread_local! {
     static RECORD_STATE: std::cell::RefCell<RecordState> = std::cell::RefCell::new(RecordState::default());
 }
 
-pub fn display(ui: &mut Ui, study_data: &mut StudyData, status: &mut StatusMessage) {
+pub fn display(ui: &mut Ui, study_data: &mut StudyData, status: &mut StatusMessage, timer: &Timer) {
+    // Add timer parameter
     ui.heading("Record Study Session");
     ui.add_space(20.0);
+
+    // Get current timer value for prefilling fields
+    let timer_minutes = timer.get_elapsed_minutes();
+    let timer_hours = (timer_minutes / 60.0).floor();
+    let timer_mins = timer_minutes % 60.0;
 
     RECORD_STATE.with(|state| {
         let mut state = state.borrow_mut();
@@ -68,6 +75,12 @@ pub fn display(ui: &mut Ui, study_data: &mut StudyData, status: &mut StatusMessa
                 egui::TextEdit::singleline(&mut state.minutes).hint_text("0"),
             );
             ui.label("m");
+
+            // Add button to use timer value
+            if ui.button("Use Timer Value").clicked() {
+                state.hours = format!("{}", timer_hours as i32);
+                state.minutes = format!("{}", timer_mins.round() as i32);
+            }
         });
 
         // Description
@@ -162,3 +175,4 @@ pub fn display(ui: &mut Ui, study_data: &mut StudyData, status: &mut StatusMessa
             });
     }
 }
+
