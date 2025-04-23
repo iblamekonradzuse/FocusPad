@@ -9,6 +9,7 @@ pub enum Tab {
     Timer,
     Stats,
     Record,
+    Graph, // Added Graph tab
 }
 
 pub struct StatusMessage {
@@ -95,6 +96,13 @@ impl eframe::App for StudyTimerApp {
                 {
                     self.current_tab = Tab::Stats;
                 }
+
+                if ui
+                    .selectable_label(matches!(self.current_tab, Tab::Graph), "📈 Graph")
+                    .clicked()
+                {
+                    self.current_tab = Tab::Graph;
+                }
             });
 
             ui.separator();
@@ -108,8 +116,12 @@ impl eframe::App for StudyTimerApp {
                     &mut self.status,
                 ),
                 Tab::Stats => ui::stats_tab::display(ui, &mut self.study_data, &mut self.status),
-                Tab::Record => ui::record_tab::display(ui, &mut self.study_data, &mut self.status, &self.timer),
+                Tab::Record => {
+                    ui::record_tab::display(ui, &mut self.study_data, &mut self.status, &self.timer)
+                }
+                Tab::Graph => ui::graph_tab::display(ui, &self.study_data, &mut self.status),
             }
         });
     }
 }
+

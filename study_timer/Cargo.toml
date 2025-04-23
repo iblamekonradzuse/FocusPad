@@ -9,4 +9,5 @@ egui = "0.24.0"          # Immediate mode GUI library
 chrono = "0.4.31"        # Date and time library
 serde = { version = "1.0", features = ["derive"] } # Serialization framework
 serde_json = "1.0"       # JSON serialization/deserialization
+charming = "0.4.0"
 
