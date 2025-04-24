@@ -43,7 +43,7 @@ pub fn display(ui: &mut Ui, study_data: &mut StudyData, status: &mut StatusMessa
         // Date selector
         ui.horizontal(|ui| {
             ui.label("Date:");
-            ui.text_edit_singleline(&mut state.date);
+            ui.add(egui::TextEdit::singleline(&mut state.date).desired_width(90.0));
             if ui.button("Today").clicked() {
                 state.date = Local::now().date_naive().format("%Y-%m-%d").to_string();
             }
