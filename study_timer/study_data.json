@@ -3,27 +3,9 @@
   "todos": [
     {
       "id": 1,
-      "text": "pls",
-      "completed": false,
-      "created_at": "2025-04-24 17:22:28"
-    },
-    {
-      "id": 2,
-      "text": "dont",
+      "text": "aaa",
       "completed": true,
-      "created_at": "2025-04-24 17:22:30"
-    },
-    {
-      "id": 3,
-      "text": "read ",
-      "completed": false,
-      "created_at": "2025-04-24 17:22:32"
-    },
-    {
-      "id": 4,
-      "text": "this",
-      "completed": false,
-      "created_at": "2025-04-24 17:22:33"
+      "created_at": "2025-04-24 17:28:56"
     }
   ]
 }

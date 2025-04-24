@@ -4,10 +4,7 @@ use crate::debug::DebugTools;
 use crate::timer::Timer;
 use chrono::Local;
 use eframe::egui::{self, Ui};
-use std::fs::File;
-use std::io::BufReader;
 use std::process::{Child, Command};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 thread_local! {
