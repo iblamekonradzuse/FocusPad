@@ -11,6 +11,7 @@ pub enum Tab {
     Record,
     Graph,
     Todo,
+    Calculator,
 }
 
 pub struct StatusMessage {
@@ -111,6 +112,13 @@ impl eframe::App for StudyTimerApp {
                 {
                     self.current_tab = Tab::Todo;
                 }
+
+                if ui
+                    .selectable_label(matches!(self.current_tab, Tab::Calculator), "🔢 Calculator")
+                    .clicked()
+                {
+                    self.current_tab = Tab::Calculator;
+                }
             });
 
             ui.separator();
@@ -129,7 +137,9 @@ impl eframe::App for StudyTimerApp {
                 }
                 Tab::Graph => ui::graph_tab::display(ui, &self.study_data, &mut self.status),
                 Tab::Todo => ui::todo_tab::display(ui, &mut self.study_data, &mut self.status),
+                Tab::Calculator => ui::calculator_tab::display(ui, &mut self.status),
             }
         });
     }
 }
+

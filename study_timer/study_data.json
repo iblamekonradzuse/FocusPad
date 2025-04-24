@@ -1,5 +1,11 @@
 {
-  "sessions": [],
+  "sessions": [
+    {
+      "date": "2025-04-24",
+      "minutes": 120.0,
+      "description": null
+    }
+  ],
   "todos": [
     {
       "id": 1,

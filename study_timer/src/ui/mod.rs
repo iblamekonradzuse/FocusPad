@@ -1,3 +1,4 @@
+pub mod calculator_tab;
 pub mod graph_tab;
 pub mod record_tab;
 pub mod stats_tab;
