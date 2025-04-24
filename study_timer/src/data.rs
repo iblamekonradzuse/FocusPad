@@ -15,6 +15,15 @@ pub struct StudySession {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StudyData {
     pub sessions: Vec<StudySession>,
+    pub todos: Vec<Todo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Todo {
+    pub id: u64,
+    pub text: String,
+    pub completed: bool,
+    pub created_at: String, // ISO date format
 }
 
 impl StudyData {
@@ -24,6 +33,7 @@ impl StudyData {
         if !data_path.exists() {
             return Ok(StudyData {
                 sessions: Vec::new(),
+                todos: Vec::new(), // Added missing todos field
             });
         }
 
@@ -119,6 +129,68 @@ impl StudyData {
                 None
             })
             .sum()
+    }
+
+    pub fn add_todo(&mut self, text: String) -> Result<(), Box<dyn std::error::Error>> {
+        let now = Local::now();
+        let todo = Todo {
+            id: self.get_next_todo_id(),
+            text,
+            completed: false,
+            created_at: now.format("%Y-%m-%d %H:%M:%S").to_string(),
+        };
+
+        self.todos.push(todo);
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn toggle_todo(&mut self, id: u64) -> Result<bool, Box<dyn std::error::Error>> {
+        let mut completed = false;
+        if let Some(todo) = self.todos.iter_mut().find(|t| t.id == id) {
+            todo.completed = !todo.completed;
+            completed = todo.completed; // Store completion state before saving
+        }
+        self.save()?;
+        Ok(completed)
+    }
+
+    pub fn update_todo_text(
+        &mut self,
+        id: u64,
+        text: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(todo) = self.todos.iter_mut().find(|t| t.id == id) {
+            todo.text = text;
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_todo(&mut self, id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.todos.retain(|t| t.id != id);
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn clear_todos(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.todos.clear();
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn clear_completed_todos(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.todos.retain(|t| !t.completed);
+        self.save()?;
+        Ok(())
+    }
+
+    fn get_next_todo_id(&self) -> u64 {
+        if let Some(max_id) = self.todos.iter().map(|t| t.id).max() {
+            max_id + 1
+        } else {
+            1
+        }
     }
 }
 

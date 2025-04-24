@@ -5,7 +5,6 @@ mod timer;
 mod ui;
 
 use app::StudyTimerApp;
-use eframe::egui;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
