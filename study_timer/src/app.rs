@@ -2,6 +2,7 @@ use crate::data::StudyData;
 use crate::debug::DebugTools;
 use crate::timer::Timer;
 use crate::ui;
+
 use eframe::{egui, CreationContext};
 use std::time::Instant;
 
@@ -12,6 +13,7 @@ pub enum Tab {
     Graph,
     Todo,
     Calculator,
+    Markdown,
 }
 
 pub struct StatusMessage {
@@ -53,6 +55,7 @@ pub struct StudyTimerApp {
     pub current_tab: Tab,
     pub status: StatusMessage,
     pub debug_tools: DebugTools,
+    pub markdown_editor: Option<ui::markdown_tab_ui::MarkdownEditor>,
 }
 
 impl StudyTimerApp {
@@ -65,6 +68,7 @@ impl StudyTimerApp {
             current_tab: Tab::Timer,
             status: StatusMessage::new(),
             debug_tools: DebugTools::new(),
+            markdown_editor: None, // Will be initialized when first accessed
         }
     }
 }
@@ -119,6 +123,13 @@ impl eframe::App for StudyTimerApp {
                 {
                     self.current_tab = Tab::Calculator;
                 }
+
+                if ui
+                    .selectable_label(matches!(self.current_tab, Tab::Markdown), "📝 Markdown")
+                    .clicked()
+                {
+                    self.current_tab = Tab::Markdown;
+                }
             });
 
             ui.separator();
@@ -138,8 +149,8 @@ impl eframe::App for StudyTimerApp {
                 Tab::Graph => ui::graph_tab::display(ui, &self.study_data, &mut self.status),
                 Tab::Todo => ui::todo_tab::display(ui, &mut self.study_data, &mut self.status),
                 Tab::Calculator => ui::calculator_tab::display(ui, &mut self.status),
+                Tab::Markdown => ui::markdown_tab_ui::display(ui, self), // Add the markdown tab display
             }
         });
     }
 }
-
