@@ -1,6 +1,26 @@
-use eframe::egui::{self, Color32, RichText};
+use eframe::egui::{self, Color32, RichText, TextureHandle};
+use std::collections::HashMap;
+use std::path::Path;
 
-pub fn render_markdown(ui: &mut egui::Ui, markdown: &str, zoom_level: f32) {
+pub struct MarkdownRendererState {
+    pub image_cache: HashMap<String, TextureHandle>,
+}
+
+impl Default for MarkdownRendererState {
+    fn default() -> Self {
+        Self {
+            image_cache: HashMap::new(),
+        }
+    }
+}
+
+pub fn render_markdown(
+    ui: &mut egui::Ui,
+    markdown: &str,
+    zoom_level: f32,
+    renderer_state: &mut MarkdownRendererState,
+    ctx: &egui::Context,
+) {
     let font_size = 14.0 * zoom_level;
     ui.style_mut()
         .text_styles
@@ -13,8 +33,13 @@ pub fn render_markdown(ui: &mut egui::Ui, markdown: &str, zoom_level: f32) {
     for line in lines {
         let trimmed = line.trim();
 
+        // Handle image syntax: ![alt text](path/to/image.png)
+        if let Some(image_match) = regex_image_match(trimmed) {
+            let (alt_text, image_path) = image_match;
+            render_image(ui, &alt_text, &image_path, zoom_level, renderer_state, ctx);
+        }
         // Handle headers
-        if trimmed.starts_with("# ") {
+        else if trimmed.starts_with("# ") {
             ui.heading(RichText::new(&trimmed[2..]).size(font_size * 1.8).strong());
             ui.add_space(5.0);
         } else if trimmed.starts_with("## ") {
@@ -200,6 +225,99 @@ pub fn render_markdown(ui: &mut egui::Ui, markdown: &str, zoom_level: f32) {
             ui.label(RichText::new(line).size(font_size));
         } else {
             ui.add_space(font_size * 0.5);
+        }
+    }
+}
+
+// Helper function to extract image details using regex
+fn regex_image_match(text: &str) -> Option<(String, String)> {
+    // Basic regex pattern for markdown images
+    let re = regex::Regex::new(r"!\[(.*?)\]\((.*?)\)").ok()?;
+    if let Some(captures) = re.captures(text) {
+        let alt_text = captures.get(1)?.as_str().to_string();
+        let path = captures.get(2)?.as_str().to_string();
+        return Some((alt_text, path));
+    }
+    None
+}
+
+fn render_image(
+    ui: &mut egui::Ui,
+    alt_text: &str,
+    image_path: &str,
+    zoom_level: f32,
+    renderer_state: &mut MarkdownRendererState,
+    ctx: &egui::Context,
+) {
+    // Check if we already have this image in cache
+    if !renderer_state.image_cache.contains_key(image_path) {
+        // Try to load the image
+        let path = Path::new(image_path);
+        if !path.exists() {
+            ui.label(RichText::new(format!("Image not found: {}", image_path)).color(Color32::RED));
+            return;
+        }
+
+        // Load the image
+        if let Ok(image_data) = std::fs::read(path) {
+            if let Ok(image) = image::load_from_memory(&image_data) {
+                let size = [image.width() as usize, image.height() as usize];
+                let image_buffer = image.to_rgba8();
+                let pixels = image_buffer.as_flat_samples();
+
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+
+                let options = egui::TextureOptions {
+                    magnification: egui::TextureFilter::Linear,
+                    minification: egui::TextureFilter::Linear,
+                    ..Default::default()
+                };
+                
+                let texture = ctx.load_texture(image_path, color_image, options);
+
+                renderer_state
+                    .image_cache
+                    .insert(image_path.to_string(), texture);
+            } else {
+                ui.label(
+                    RichText::new(format!("Failed to decode image: {}", image_path))
+                        .color(Color32::RED),
+                );
+                return;
+            }
+        } else {
+            ui.label(
+                RichText::new(format!("Failed to read image: {}", image_path)).color(Color32::RED),
+            );
+            return;
+        }
+    }
+
+    // Display the image
+    if let Some(texture) = renderer_state.image_cache.get(image_path) {
+        // Calculate appropriate size based on zoom level and original dimensions
+        let max_width = ui.available_width() * 0.8; // Use 80% of available width max
+
+        let mut size = texture.size_vec2();
+        if size.x > max_width {
+            let ratio = max_width / size.x;
+            size *= ratio;
+        }
+
+        // Apply zoom
+        size *= zoom_level;
+
+        // Create Image widget from the texture handle directly
+        let image = egui::Image::new(texture).fit_to_exact_size(size);
+        
+        // Check if the image is hovered
+        let response = ui.add(image);
+        
+        // Show tooltip if hovered
+        if response.hovered() {
+            egui::show_tooltip(ui.ctx(), egui::Id::new("image_tooltip"), |ui| {
+                ui.label(alt_text);
+            });
         }
     }
 }

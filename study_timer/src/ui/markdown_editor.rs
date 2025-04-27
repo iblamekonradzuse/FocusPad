@@ -1,3 +1,4 @@
+use crate::ui::markdown_renderer::MarkdownRendererState;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -26,6 +27,8 @@ pub struct MarkdownEditor {
     pub selected_folder: Option<PathBuf>,
     // Track expanded folders for the tree view
     pub expanded_folders: Vec<PathBuf>,
+    // Add new field for renderer state
+    pub renderer_state: MarkdownRendererState,
 }
 
 impl Default for MarkdownEditor {
@@ -48,6 +51,7 @@ impl Default for MarkdownEditor {
             file_browser_collapsed: false,
             selected_folder: None,
             expanded_folders: Vec::new(),
+            renderer_state: MarkdownRendererState::default(),
         }
     }
 }
@@ -217,4 +221,30 @@ impl MarkdownEditor {
             _ => {}
         }
     }
+
+    // Get the base directory for resolving image paths
+    pub fn get_base_dir(&self) -> PathBuf {
+        if let Some(file_path) = &self.current_file {
+            if let Some(parent) = file_path.parent() {
+                return parent.to_path_buf();
+            }
+        }
+        PathBuf::from(FILES_DIR)
+    }
+
+    // Insert an image at cursor position
+    pub fn insert_image(&mut self, file_path: &Path) {
+        // Convert the path to be relative to the current file
+        let base_dir = self.get_base_dir();
+        let rel_path = if let Ok(rel) = file_path.strip_prefix(&base_dir) {
+            rel.to_string_lossy().to_string()
+        } else {
+            file_path.to_string_lossy().to_string()
+        };
+
+        // Insert markdown image syntax
+        let image_md = format!("![Image]({})", rel_path);
+        self.current_content.push_str(&image_md);
+    }
 }
+

@@ -5,6 +5,7 @@ use eframe::egui::{self, Color32, RichText};
 pub fn render_editor(
     ui: &mut egui::Ui,
     editor: &mut MarkdownEditor,
+    ctx: &egui::Context,
     mut status_update: impl FnMut(&str),
 ) {
     // Get the path string outside any closures if it exists
@@ -70,6 +71,20 @@ pub fn render_editor(
             if ui.button(RichText::new("B").color(Color32::BLUE)).clicked() {
                 editor.add_formatting("blue");
             }
+
+            // Add image button
+            ui.separator();
+            if ui.button("🖼️ Image").clicked() {
+                // Use native file dialog to choose an image
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Images", &["png", "jpg", "jpeg", "gif", "bmp", "webp"])
+                    .set_directory(&editor.get_base_dir())
+                    .pick_file()
+                {
+                    editor.insert_image(&path);
+                    status_update("Image inserted");
+                }
+            }
         });
     }
 
@@ -80,10 +95,10 @@ pub fn render_editor(
             render_edit_mode(ui, editor);
         }
         EditorMode::Preview => {
-            render_preview_mode(ui, editor);
+            render_preview_mode(ui, editor, ctx);
         }
         EditorMode::Split => {
-            render_split_mode(ui, editor);
+            render_split_mode(ui, editor, ctx);
         }
     }
 }
@@ -111,16 +126,22 @@ fn render_edit_mode(ui: &mut egui::Ui, editor: &mut MarkdownEditor) {
         });
 }
 
-fn render_preview_mode(ui: &mut egui::Ui, editor: &mut MarkdownEditor) {
+fn render_preview_mode(ui: &mut egui::Ui, editor: &mut MarkdownEditor, ctx: &egui::Context) {
     // Full preview
     egui::ScrollArea::vertical()
         .id_source("preview_scroll")
         .show(ui, |ui| {
-            markdown_renderer::render_markdown(ui, &editor.current_content, editor.zoom_level);
+            markdown_renderer::render_markdown(
+                ui,
+                &editor.current_content,
+                editor.zoom_level,
+                &mut editor.renderer_state,
+                ctx,
+            );
         });
 }
 
-fn render_split_mode(ui: &mut egui::Ui, editor: &mut MarkdownEditor) {
+fn render_split_mode(ui: &mut egui::Ui, editor: &mut MarkdownEditor, ctx: &egui::Context) {
     // Split view - using show_inside instead of show
     egui::CentralPanel::default().show_inside(ui, |ui| {
         ui.columns(2, |columns| {
@@ -154,13 +175,15 @@ fn render_split_mode(ui: &mut egui::Ui, editor: &mut MarkdownEditor) {
                         ui,
                         &editor.current_content,
                         editor.zoom_level,
+                        &mut editor.renderer_state,
+                        ctx,
                     );
                 });
         });
     });
 }
 
-pub fn display(ui: &mut egui::Ui, app: &mut crate::app::StudyTimerApp) {
+pub fn display(ui: &mut egui::Ui, app: &mut crate::app::StudyTimerApp, ctx: &egui::Context) {
     // Initialize the markdown editor if it's not already initialized
     if app.markdown_editor.is_none() {
         app.markdown_editor = Some(crate::ui::markdown_editor::MarkdownEditor::default());
@@ -186,7 +209,7 @@ pub fn display(ui: &mut egui::Ui, app: &mut crate::app::StudyTimerApp) {
         if editor.file_browser_collapsed {
             // Only show editor when file browser is collapsed
             ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                render_editor(ui, editor, |message| {
+                render_editor(ui, editor, ctx, |message| {
                     app.status.show(message);
                 });
             });
@@ -202,7 +225,7 @@ pub fn display(ui: &mut egui::Ui, app: &mut crate::app::StudyTimerApp) {
 
                 // Editor on the right column
                 columns[1].with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                    render_editor(ui, editor, |message| {
+                    render_editor(ui, editor, ctx, |message| {
                         app.status.show(message);
                     });
                 });

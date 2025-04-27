@@ -160,7 +160,7 @@ impl eframe::App for StudyTimerApp {
                     ui::reminder_tab::display(ui, &mut self.study_data, &mut self.status)
                 }
                 Tab::Calculator => ui::calculator_tab::display(ui, &mut self.status),
-                Tab::Markdown => ui::markdown_tab_ui::display(ui, self),
+                Tab::Markdown => ui::markdown_tab_ui::display(ui, self, ctx),
             }
         });
     }
