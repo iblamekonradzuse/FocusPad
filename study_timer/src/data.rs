@@ -12,18 +12,38 @@ pub struct StudySession {
     pub description: Option<String>, // Optional description of the study session
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct StudyData {
-    pub sessions: Vec<StudySession>,
-    pub todos: Vec<Todo>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Todo {
     pub id: u64,
     pub text: String,
     pub completed: bool,
     pub created_at: String, // ISO date format
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Reminder {
+    pub id: u64,
+    pub title: String,
+    pub description: Option<String>,
+    pub due_date: String, // YYYY-MM-DD format
+    pub created_at: String, // ISO date format
+    pub notification_periods: Vec<NotificationPeriod>,
+    pub is_completed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum NotificationPeriod {
+    OneDay,
+    ThreeDays,
+    OneWeek,
+    Custom(u32), // Custom days before due date
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StudyData {
+    pub sessions: Vec<StudySession>,
+    pub todos: Vec<Todo>,
+    pub reminders: Vec<Reminder>,
 }
 
 impl StudyData {
@@ -33,7 +53,8 @@ impl StudyData {
         if !data_path.exists() {
             return Ok(StudyData {
                 sessions: Vec::new(),
-                todos: Vec::new(), // Added missing todos field
+                todos: Vec::new(),
+                reminders: Vec::new(), // Initialize empty reminders
             });
         }
 
@@ -131,6 +152,7 @@ impl StudyData {
             .sum()
     }
 
+    // Todo methods
     pub fn add_todo(&mut self, text: String) -> Result<(), Box<dyn std::error::Error>> {
         let now = Local::now();
         let todo = Todo {
@@ -192,5 +214,82 @@ impl StudyData {
             1
         }
     }
-}
+    
+    // Reminder methods
+    pub fn add_reminder(
+        &mut self,
+        title: String,
+        description: Option<String>,
+        due_date: String,
+        notification_periods: Vec<NotificationPeriod>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let now = Local::now();
+        let reminder = Reminder {
+            id: self.get_next_reminder_id(),
+            title,
+            description,
+            due_date,
+            created_at: now.format("%Y-%m-%d %H:%M:%S").to_string(),
+            notification_periods,
+            is_completed: false,
+        };
 
+        self.reminders.push(reminder);
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn update_reminder(
+        &mut self,
+        id: u64,
+        title: String,
+        description: Option<String>,
+        due_date: String,
+        notification_periods: Vec<NotificationPeriod>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(reminder) = self.reminders.iter_mut().find(|r| r.id == id) {
+            reminder.title = title;
+            reminder.description = description;
+            reminder.due_date = due_date;
+            reminder.notification_periods = notification_periods;
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    pub fn toggle_reminder(&mut self, id: u64) -> Result<bool, Box<dyn std::error::Error>> {
+        let mut completed = false;
+        if let Some(reminder) = self.reminders.iter_mut().find(|r| r.id == id) {
+            reminder.is_completed = !reminder.is_completed;
+            completed = reminder.is_completed;
+        }
+        self.save()?;
+        Ok(completed)
+    }
+
+    pub fn delete_reminder(&mut self, id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.reminders.retain(|r| r.id != id);
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn clear_reminders(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.reminders.clear();
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn clear_completed_reminders(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.reminders.retain(|r| !r.is_completed);
+        self.save()?;
+        Ok(())
+    }
+
+    fn get_next_reminder_id(&self) -> u64 {
+        if let Some(max_id) = self.reminders.iter().map(|r| r.id).max() {
+            max_id + 1
+        } else {
+            1
+        }
+    }
+}

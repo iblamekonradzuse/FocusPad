@@ -14,6 +14,7 @@ pub enum Tab {
     Todo,
     Calculator,
     Markdown,
+    Reminder, // Add new Reminder tab
 }
 
 pub struct StatusMessage {
@@ -118,6 +119,13 @@ impl eframe::App for StudyTimerApp {
                 }
 
                 if ui
+                    .selectable_label(matches!(self.current_tab, Tab::Reminder), "🔔 Reminder")
+                    .clicked()
+                {
+                    self.current_tab = Tab::Reminder;
+                }
+
+                if ui
                     .selectable_label(matches!(self.current_tab, Tab::Calculator), "🔢 Calculator")
                     .clicked()
                 {
@@ -148,8 +156,11 @@ impl eframe::App for StudyTimerApp {
                 }
                 Tab::Graph => ui::graph_tab::display(ui, &self.study_data, &mut self.status),
                 Tab::Todo => ui::todo_tab::display(ui, &mut self.study_data, &mut self.status),
+                Tab::Reminder => {
+                    ui::reminder_tab::display(ui, &mut self.study_data, &mut self.status)
+                }
                 Tab::Calculator => ui::calculator_tab::display(ui, &mut self.status),
-                Tab::Markdown => ui::markdown_tab_ui::display(ui, self), // Add the markdown tab display
+                Tab::Markdown => ui::markdown_tab_ui::display(ui, self),
             }
         });
     }

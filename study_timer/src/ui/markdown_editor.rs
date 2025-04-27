@@ -193,8 +193,6 @@ impl MarkdownEditor {
 
     // Add markdown formatting to selected text
     pub fn add_formatting(&mut self, format_type: &str) {
-        // This is a placeholder - in a real implementation,
-        // we would need to handle text selection which requires more complex UI state management
         match format_type {
             "bold" => {
                 self.current_content.push_str("**Bold Text**");
