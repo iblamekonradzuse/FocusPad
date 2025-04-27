@@ -1,6 +1,8 @@
 pub mod calculator_tab;
+pub mod file_browser;
 pub mod graph_tab;
-pub mod markdown_model;
+pub mod markdown_editor;
+pub mod markdown_renderer;
 pub mod markdown_tab_ui;
 pub mod record_tab;
 pub mod stats_tab;

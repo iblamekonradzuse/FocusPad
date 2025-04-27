@@ -55,7 +55,7 @@ pub struct StudyTimerApp {
     pub current_tab: Tab,
     pub status: StatusMessage,
     pub debug_tools: DebugTools,
-    pub markdown_editor: Option<ui::markdown_tab_ui::MarkdownEditor>,
+    pub markdown_editor: Option<crate::ui::markdown_editor::MarkdownEditor>,
 }
 
 impl StudyTimerApp {
@@ -154,3 +154,4 @@ impl eframe::App for StudyTimerApp {
         });
     }
 }
+
