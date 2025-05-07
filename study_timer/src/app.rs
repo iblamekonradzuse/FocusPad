@@ -1,5 +1,6 @@
 use crate::data::StudyData;
 use crate::debug::DebugTools;
+use crate::terminal::TerminalEmulator;
 use crate::timer::Timer;
 use crate::ui;
 
@@ -14,7 +15,8 @@ pub enum Tab {
     Todo,
     Calculator,
     Markdown,
-    Reminder, // Add new Reminder tab
+    Reminder,
+    Terminal, // Added Terminal tab
 }
 
 pub struct StatusMessage {
@@ -57,6 +59,7 @@ pub struct StudyTimerApp {
     pub status: StatusMessage,
     pub debug_tools: DebugTools,
     pub markdown_editor: Option<crate::ui::markdown_editor::MarkdownEditor>,
+    pub terminal: TerminalEmulator, // Added terminal instance
 }
 
 impl StudyTimerApp {
@@ -70,6 +73,7 @@ impl StudyTimerApp {
             status: StatusMessage::new(),
             debug_tools: DebugTools::new(),
             markdown_editor: None, // Will be initialized when first accessed
+            terminal: TerminalEmulator::new(), // Initialize the terminal
         }
     }
 }
@@ -138,6 +142,13 @@ impl eframe::App for StudyTimerApp {
                 {
                     self.current_tab = Tab::Markdown;
                 }
+
+                if ui
+                    .selectable_label(matches!(self.current_tab, Tab::Terminal), "🖥️ Terminal")
+                    .clicked()
+                {
+                    self.current_tab = Tab::Terminal;
+                }
             });
 
             ui.separator();
@@ -161,6 +172,9 @@ impl eframe::App for StudyTimerApp {
                 }
                 Tab::Calculator => ui::calculator_tab::display(ui, &mut self.status),
                 Tab::Markdown => ui::markdown_tab_ui::display(ui, self, ctx),
+                Tab::Terminal => {
+                    ui::terminal_tab_ui::display(ui, &mut self.terminal, &mut self.status)
+                }
             }
         });
     }

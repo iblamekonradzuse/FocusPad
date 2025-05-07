@@ -1,6 +1,7 @@
 mod app;
 mod data;
 mod debug;
+mod terminal;
 mod timer;
 mod ui;
 
