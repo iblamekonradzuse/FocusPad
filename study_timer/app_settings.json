@@ -1,0 +1,55 @@
+{
+  "navigation_layout": "Horizontal",
+  "tab_configs": [
+    {
+      "tab_type": "Timer",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
+      "tab_type": "Record",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
+      "tab_type": "Stats",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
+      "tab_type": "Graph",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
+      "tab_type": "Todo",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
+      "tab_type": "Reminder",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
+      "tab_type": "Calculator",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
+      "tab_type": "Markdown",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
+      "tab_type": "Terminal",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
+      "tab_type": "Settings",
+      "enabled": true,
+      "custom_name": null
+    }
+  ]
+}

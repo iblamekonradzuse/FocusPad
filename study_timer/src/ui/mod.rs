@@ -6,6 +6,7 @@ pub mod markdown_renderer;
 pub mod markdown_tab_ui;
 pub mod record_tab;
 pub mod reminder_tab;
+pub mod settings_tab_ui;
 pub mod stats_tab;
 pub mod terminal_tab_ui;
 pub mod timer_tab;
