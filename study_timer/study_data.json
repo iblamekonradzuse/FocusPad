@@ -6,19 +6,15 @@
       "description": null
     }
   ],
-  "todos": [],
-  "reminders": [
+  "todos": [
     {
       "id": 1,
-      "title": "a",
-      "description": null,
-      "due_date": "2025-04-28",
-      "created_at": "2025-04-27 20:48:54",
-      "notification_periods": [
-        "OneDay"
-      ],
-      "is_completed": false
-    },
+      "text": "a",
+      "completed": true,
+      "created_at": "2025-05-22 01:04:07"
+    }
+  ],
+  "reminders": [
     {
       "id": 2,
       "title": "b",
@@ -46,6 +42,42 @@
           "Custom": 5
         }
       ],
+      "is_completed": false
+    },
+    {
+      "id": 4,
+      "title": "a",
+      "description": null,
+      "due_date": "2025-05-22",
+      "created_at": "2025-05-22 01:12:24",
+      "notification_periods": [],
+      "is_completed": false
+    },
+    {
+      "id": 5,
+      "title": "b",
+      "description": null,
+      "due_date": "2025-05-24",
+      "created_at": "2025-05-22 01:12:32",
+      "notification_periods": [],
+      "is_completed": false
+    },
+    {
+      "id": 6,
+      "title": "c",
+      "description": null,
+      "due_date": "2025-05-25",
+      "created_at": "2025-05-22 01:12:39",
+      "notification_periods": [],
+      "is_completed": false
+    },
+    {
+      "id": 7,
+      "title": "d",
+      "description": null,
+      "due_date": "2025-05-26",
+      "created_at": "2025-05-22 01:12:45",
+      "notification_periods": [],
       "is_completed": false
     }
   ]

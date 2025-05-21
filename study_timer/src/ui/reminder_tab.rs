@@ -239,40 +239,39 @@ pub fn display(ui: &mut egui::Ui, study_data: &mut StudyData, status: &mut Statu
                     Some(days) => format!(" (Due in {} days)", days),
                     None => " (Invalid date)".to_string(),
                 };
-
                 let frame = if let Some(days) = days_until {
-                    if days < 0 {
-                        // Overdue - deep red-blue
-                        egui::Frame::none()
-                            .fill(egui::Color32::from_rgb(120, 130, 180))
-                            .inner_margin(egui::style::Margin::same(8.0))
-                            .rounding(egui::Rounding::same(5.0))
-                    } else if days == 0 {
-                        // Due today - bright blue
-                        egui::Frame::none()
-                            .fill(egui::Color32::from_rgb(100, 150, 230))
-                            .inner_margin(egui::style::Margin::same(8.0))
-                            .rounding(egui::Rounding::same(5.0))
-                    } else if days <= 3 {
-                        // Due soon - medium blue
-                        egui::Frame::none()
-                            .fill(egui::Color32::from_rgb(80, 120, 200))
-                            .inner_margin(egui::style::Margin::same(8.0))
-                            .rounding(egui::Rounding::same(5.0))
-                    } else {
-                        // Plenty of time - light blue
-                        egui::Frame::none()
-                            .fill(egui::Color32::from_rgb(120, 170, 230))
-                            .inner_margin(egui::style::Margin::same(8.0))
-                            .rounding(egui::Rounding::same(5.0))
-                    }
-                } else {
-                    // Invalid date - neutral blue-grey
-                    egui::Frame::none()
-                        .fill(egui::Color32::from_rgb(150, 160, 190))
-                        .inner_margin(egui::style::Margin::same(8.0))
-                        .rounding(egui::Rounding::same(5.0))
-                };
+    if days < 0 {
+        // Overdue – darker grey
+        egui::Frame::none()
+            .fill(egui::Color32::from_rgb(60, 60, 60)) // dark grey
+            .inner_margin(egui::style::Margin::same(8.0))
+            .rounding(egui::Rounding::same(5.0))
+    } else if days == 0 {
+        // Due today – mid grey
+        egui::Frame::none()
+            .fill(egui::Color32::from_rgb(100, 100, 100)) // medium grey
+            .inner_margin(egui::style::Margin::same(8.0))
+            .rounding(egui::Rounding::same(5.0))
+    } else if days <= 3 {
+        // Due soon – lighter grey
+        egui::Frame::none()
+            .fill(egui::Color32::from_rgb(130, 130, 130)) // light grey
+            .inner_margin(egui::style::Margin::same(8.0))
+            .rounding(egui::Rounding::same(5.0))
+    } else {
+        // Plenty of time – very light grey
+        egui::Frame::none()
+            .fill(egui::Color32::from_rgb(180, 180, 180)) // very light grey
+            .inner_margin(egui::style::Margin::same(8.0))
+            .rounding(egui::Rounding::same(5.0))
+    }
+} else {
+    // Invalid date – neutral mid-grey
+    egui::Frame::none()
+        .fill(egui::Color32::from_rgb(120, 120, 120)) // neutral grey
+        .inner_margin(egui::style::Margin::same(8.0))
+        .rounding(egui::Rounding::same(5.0))
+};
 
 
                 frame.show(ui, |ui| {
