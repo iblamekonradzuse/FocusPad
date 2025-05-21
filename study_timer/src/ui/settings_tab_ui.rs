@@ -1,6 +1,6 @@
 use crate::app::{StatusMessage, Tab};
-use crate::settings::{AppSettings, NavigationLayout};
-use eframe::egui;
+use crate::settings::{AppSettings, ColorTheme, NavigationLayout, PresetTheme};
+use eframe::egui::{self};
 
 pub fn display(
     ui: &mut egui::Ui,
@@ -8,13 +8,173 @@ pub fn display(
     status: &mut StatusMessage,
     current_tab: &mut Tab,
 ) {
-    ui.heading("Settings");
+    ui.heading("⚙️ Settings");
     ui.add_space(20.0);
 
     egui::ScrollArea::vertical().show(ui, |ui| {
+        // Theme Section
+        ui.group(|ui| {
+            ui.heading("🎨 Theme");
+            ui.add_space(10.0);
+
+            let mut theme_changed = false;
+            let old_preset = settings.theme_preset.clone();
+
+            ui.horizontal_wrapped(|ui| {
+                for preset in PresetTheme::all_presets() {
+                    let is_selected = settings.theme_preset == preset;
+
+                    // Create a colored button for visual preview
+                    let colors = if preset == PresetTheme::Custom {
+                        settings.custom_colors.clone()
+                    } else {
+                        preset.get_colors()
+                    };
+
+                    let bg_color = colors.background_color32();
+
+                    let button = egui::Button::new(preset.name())
+                        .fill(if is_selected {
+                            colors.active_tab_color32()
+                        } else {
+                            bg_color
+                        })
+                        .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
+
+                    if ui.add(button).clicked() {
+                        settings.theme_preset = preset;
+                        theme_changed = true;
+                    }
+                }
+            });
+
+            // Custom color editor (only show when Custom is selected)
+            if settings.theme_preset == PresetTheme::Custom {
+                ui.add_space(15.0);
+                ui.separator();
+                ui.add_space(10.0);
+                ui.heading("Custom Colors");
+                ui.add_space(10.0);
+
+                let mut custom_changed = false;
+
+                egui::Grid::new("color_grid")
+                    .num_columns(3)
+                    .spacing([10.0, 8.0])
+                    .show(ui, |ui| {
+                        // Background
+                        ui.label("Background:");
+                        let mut bg_color = settings.custom_colors.background_color32();
+                        if ui.color_edit_button_srgba(&mut bg_color).changed() {
+                            settings.custom_colors.background = ColorTheme::from_color32(bg_color);
+                            custom_changed = true;
+                        }
+                        ui.end_row();
+
+                        // Navigation Background
+                        ui.label("Navigation:");
+                        let mut nav_color = settings.custom_colors.navigation_background_color32();
+                        if ui.color_edit_button_srgba(&mut nav_color).changed() {
+                            settings.custom_colors.navigation_background =
+                                ColorTheme::from_color32(nav_color);
+                            custom_changed = true;
+                        }
+                        ui.end_row();
+
+                        // Active Tab
+                        ui.label("Active Tab:");
+                        let mut active_color = settings.custom_colors.active_tab_color32();
+                        if ui.color_edit_button_srgba(&mut active_color).changed() {
+                            settings.custom_colors.active_tab =
+                                ColorTheme::from_color32(active_color);
+                            custom_changed = true;
+                        }
+                        ui.end_row();
+
+                        // Inactive Tab
+                        ui.label("Inactive Tab:");
+                        let mut inactive_color = settings.custom_colors.inactive_tab_color32();
+                        if ui.color_edit_button_srgba(&mut inactive_color).changed() {
+                            settings.custom_colors.inactive_tab =
+                                ColorTheme::from_color32(inactive_color);
+                            custom_changed = true;
+                        }
+                        ui.end_row();
+
+                        // Primary Text
+                        ui.label("Primary Text:");
+                        let mut text_color = settings.custom_colors.text_primary_color32();
+                        if ui.color_edit_button_srgba(&mut text_color).changed() {
+                            settings.custom_colors.text_primary =
+                                ColorTheme::from_color32(text_color);
+                            custom_changed = true;
+                        }
+                        ui.end_row();
+
+                        // Secondary Text
+                        ui.label("Secondary Text:");
+                        let mut sec_text_color = settings.custom_colors.text_secondary_color32();
+                        if ui.color_edit_button_srgba(&mut sec_text_color).changed() {
+                            settings.custom_colors.text_secondary =
+                                ColorTheme::from_color32(sec_text_color);
+                            custom_changed = true;
+                        }
+                        ui.end_row();
+
+                        // Accent Color
+                        ui.label("Accent:");
+                        let mut accent_color = settings.custom_colors.accent_color32();
+                        if ui.color_edit_button_srgba(&mut accent_color).changed() {
+                            settings.custom_colors.accent = ColorTheme::from_color32(accent_color);
+                            custom_changed = true;
+                        }
+                        ui.end_row();
+
+                        // Panel Background
+                        ui.label("Panel Background:");
+                        let mut panel_color = settings.custom_colors.panel_background_color32();
+                        if ui.color_edit_button_srgba(&mut panel_color).changed() {
+                            settings.custom_colors.panel_background =
+                                ColorTheme::from_color32(panel_color);
+                            custom_changed = true;
+                        }
+                        ui.end_row();
+                    });
+
+                if custom_changed {
+                    theme_changed = true;
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("🔄 Reset to Default Colors").clicked() {
+                        settings.custom_colors = ColorTheme::default();
+                        theme_changed = true;
+                    }
+
+                    if ui.button("📋 Copy from Current Theme").clicked() {
+                        if old_preset != PresetTheme::Custom {
+                            settings.custom_colors = old_preset.get_colors();
+                            theme_changed = true;
+                        }
+                    }
+                });
+            }
+
+            if theme_changed {
+                if let Err(e) = settings.save() {
+                    status.show(&format!("Failed to save theme: {}", e));
+                } else {
+                    status.show("Theme saved successfully!");
+                }
+            }
+        });
+
+        ui.add_space(20.0);
+
         // Navigation Layout Section
         ui.group(|ui| {
-            ui.heading("Navigation Layout");
+            ui.heading("📐 Navigation Layout");
             ui.add_space(10.0);
 
             let mut layout_changed = false;
@@ -55,7 +215,7 @@ pub fn display(
 
         // Tab Management Section
         ui.group(|ui| {
-            ui.heading("Tab Management");
+            ui.heading("📑 Tab Management");
             ui.add_space(10.0);
 
             ui.label("Configure tabs visibility, names, and order:");
@@ -72,10 +232,10 @@ pub fn display(
 
                 ui.horizontal(|ui| {
                     // Move up/down buttons
-                    if index > 0 && ui.button("U").clicked() {
+                    if index > 0 && ui.button("⬆").clicked() {
                         move_up_index = Some(index);
                     }
-                    if index < settings.tab_configs.len() - 2 && ui.button("D").clicked() {
+                    if index < settings.tab_configs.len() - 2 && ui.button("⬇").clicked() {
                         // -2 because settings is last
                         move_down_index = Some(index);
                     }
@@ -108,7 +268,7 @@ pub fn display(
                     }
 
                     // Reset name button
-                    if config.custom_name.is_some() && ui.button("Reset Name").clicked() {
+                    if config.custom_name.is_some() && ui.button("🔄 Reset Name").clicked() {
                         settings.reset_tab_name(&config.tab_type);
                         any_changed = true;
                     }
@@ -145,10 +305,10 @@ pub fn display(
 
         // Reset Section
         ui.group(|ui| {
-            ui.heading("Reset Options");
+            ui.heading("🔧 Reset Options");
             ui.add_space(10.0);
 
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button("🔄 Reset All Names").clicked() {
                     for config in &mut settings.tab_configs {
                         config.custom_name = None;
@@ -169,6 +329,16 @@ pub fn display(
                     }
                 }
 
+                if ui.button("🔄 Reset Theme").clicked() {
+                    settings.theme_preset = PresetTheme::Default;
+                    settings.custom_colors = ColorTheme::default();
+                    if let Err(e) = settings.save() {
+                        status.show(&format!("Failed to reset theme: {}", e));
+                    } else {
+                        status.show("Theme reset to default!");
+                    }
+                }
+
                 if ui.button("🔄 Reset All Settings").clicked() {
                     *settings = AppSettings::default();
                     if let Err(e) = settings.save() {
@@ -185,14 +355,16 @@ pub fn display(
 
         // Information Section
         ui.group(|ui| {
-            ui.heading("Information");
+            ui.heading("ℹ️ Information");
             ui.add_space(5.0);
-            ui.label("• Use U/D buttons to reorder tabs");
+            ui.label("• Choose from preset themes or create a custom one");
+            ui.label("• Custom colors are saved when you select the Custom theme");
+            ui.label("• Use ⬆/⬇ buttons to reorder tabs");
             ui.label("• Custom names will be saved and remembered");
             ui.label("• The Settings tab is always visible and enabled");
             ui.label("• Disabled tabs will be hidden from the navigation");
             ui.label("• Changes are automatically saved");
+            ui.label("• Theme changes apply immediately");
         });
     });
 }
-

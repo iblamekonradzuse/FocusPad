@@ -1,3 +1,4 @@
+use eframe::egui::Color32;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -12,6 +13,170 @@ pub enum NavigationLayout {
 impl Default for NavigationLayout {
     fn default() -> Self {
         NavigationLayout::Horizontal
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum PresetTheme {
+    Default,
+    Dark,
+    Ocean,
+    Forest,
+    Sunset,
+    Purple,
+    Custom,
+}
+
+impl PresetTheme {
+    pub fn get_colors(&self) -> ColorTheme {
+        match self {
+            PresetTheme::Default => ColorTheme::default(),
+            PresetTheme::Dark => ColorTheme {
+                background: [18, 18, 18, 255],
+                navigation_background: [28, 28, 28, 255],
+                active_tab: [64, 128, 255, 255],
+                inactive_tab: [128, 128, 128, 255],
+                text_primary: [255, 255, 255, 255],
+                text_secondary: [200, 200, 200, 255],
+                accent: [69, 74, 108, 255],
+                panel_background: [32, 32, 32, 255],
+            },
+            PresetTheme::Ocean => ColorTheme {
+                background: [25, 42, 86, 255],
+                navigation_background: [30, 50, 100, 255],
+                active_tab: [100, 200, 255, 255],
+                inactive_tab: [150, 150, 180, 255],
+                text_primary: [240, 248, 255, 255],
+                text_secondary: [200, 220, 240, 255],
+                accent: [100, 200, 255, 255],
+                panel_background: [35, 55, 110, 255],
+            },
+            PresetTheme::Forest => ColorTheme {
+                background: [34, 49, 34, 255],
+                navigation_background: [45, 60, 45, 255],
+                active_tab: [144, 238, 144, 255],
+                inactive_tab: [128, 128, 128, 255],
+                text_primary: [240, 255, 240, 255],
+                text_secondary: [200, 220, 200, 255],
+                accent: [144, 238, 144, 255],
+                panel_background: [40, 55, 40, 255],
+            },
+            PresetTheme::Sunset => ColorTheme {
+                background: [60, 30, 30, 255],
+                navigation_background: [80, 40, 40, 255],
+                active_tab: [255, 165, 0, 255],
+                inactive_tab: [200, 150, 100, 255],
+                text_primary: [255, 240, 220, 255],
+                text_secondary: [220, 200, 180, 255],
+                accent: [255, 165, 0, 255],
+                panel_background: [70, 35, 35, 255],
+            },
+            PresetTheme::Purple => ColorTheme {
+                background: [45, 35, 65, 255],
+                navigation_background: [55, 45, 75, 255],
+                active_tab: [186, 85, 211, 255],
+                inactive_tab: [150, 120, 170, 255],
+                text_primary: [248, 240, 255, 255],
+                text_secondary: [220, 200, 240, 255],
+                accent: [186, 85, 211, 255],
+                panel_background: [50, 40, 70, 255],
+            },
+            PresetTheme::Custom => ColorTheme::default(), // Will use custom values
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            PresetTheme::Default => "Default",
+            PresetTheme::Dark => "Dark",
+            PresetTheme::Ocean => "Ocean",
+            PresetTheme::Forest => "Forest",
+            PresetTheme::Sunset => "Sunset",
+            PresetTheme::Purple => "Purple",
+            PresetTheme::Custom => "Custom",
+        }
+    }
+
+    pub fn all_presets() -> Vec<PresetTheme> {
+        vec![
+            PresetTheme::Default,
+            PresetTheme::Dark,
+            PresetTheme::Ocean,
+            PresetTheme::Forest,
+            PresetTheme::Sunset,
+            PresetTheme::Purple,
+            PresetTheme::Custom,
+        ]
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColorTheme {
+    pub background: [u8; 4],
+    pub navigation_background: [u8; 4],
+    pub active_tab: [u8; 4],
+    pub inactive_tab: [u8; 4],
+    pub text_primary: [u8; 4],
+    pub text_secondary: [u8; 4],
+    pub accent: [u8; 4],
+    pub panel_background: [u8; 4],
+}
+
+impl Default for ColorTheme {
+    fn default() -> Self {
+        Self {
+            background: [32, 32, 32, 255],
+            navigation_background: [48, 48, 48, 255],
+            active_tab: [68, 68, 68, 255],
+            inactive_tab: [96, 96, 96, 255],
+            text_primary: [255, 255, 255, 255],
+            text_secondary: [180, 180, 180, 255],
+            accent: [69, 74, 108, 255],
+            panel_background: [40, 40, 40, 255],
+        }
+    }
+}
+
+impl ColorTheme {
+    pub fn to_color32(&self, color: [u8; 4]) -> Color32 {
+        Color32::from_rgba_unmultiplied(color[0], color[1], color[2], color[3])
+    }
+
+    pub fn background_color32(&self) -> Color32 {
+        self.to_color32(self.background)
+    }
+
+    pub fn navigation_background_color32(&self) -> Color32 {
+        self.to_color32(self.navigation_background)
+    }
+
+    pub fn active_tab_color32(&self) -> Color32 {
+        self.to_color32(self.active_tab)
+    }
+
+    pub fn inactive_tab_color32(&self) -> Color32 {
+        self.to_color32(self.inactive_tab)
+    }
+
+    pub fn text_primary_color32(&self) -> Color32 {
+        self.to_color32(self.text_primary)
+    }
+
+    pub fn text_secondary_color32(&self) -> Color32 {
+        self.to_color32(self.text_secondary)
+    }
+
+    pub fn accent_color32(&self) -> Color32 {
+        self.to_color32(self.accent)
+    }
+
+    pub fn panel_background_color32(&self) -> Color32 {
+        self.to_color32(self.panel_background)
+    }
+
+    pub fn from_color32(color: Color32) -> [u8; 4] {
+        let rgba = color.to_array();
+        [rgba[0], rgba[1], rgba[2], rgba[3]]
     }
 }
 
@@ -59,6 +224,8 @@ impl TabConfig {
 pub struct AppSettings {
     pub navigation_layout: NavigationLayout,
     pub tab_configs: Vec<TabConfig>,
+    pub theme_preset: PresetTheme,
+    pub custom_colors: ColorTheme,
 }
 
 impl Default for AppSettings {
@@ -79,6 +246,8 @@ impl Default for AppSettings {
         Self {
             navigation_layout: NavigationLayout::default(),
             tab_configs: default_tabs,
+            theme_preset: PresetTheme::Default,
+            custom_colors: ColorTheme::default(),
         }
     }
 }
@@ -115,6 +284,39 @@ impl AppSettings {
         Ok(())
     }
 
+    pub fn get_current_colors(&self) -> ColorTheme {
+        if self.theme_preset == PresetTheme::Custom {
+            self.custom_colors.clone()
+        } else {
+            self.theme_preset.get_colors()
+        }
+    }
+
+    pub fn apply_theme(&self, ctx: &eframe::egui::Context) {
+        let colors = self.get_current_colors();
+
+        let mut visuals = ctx.style().visuals.clone();
+
+        // Apply background colors
+        visuals.panel_fill = colors.background_color32();
+        visuals.window_fill = colors.panel_background_color32();
+        visuals.extreme_bg_color = colors.navigation_background_color32();
+
+        // Apply widget colors
+        visuals.widgets.active.bg_fill = colors.active_tab_color32();
+        visuals.widgets.hovered.bg_fill = colors.accent_color32();
+        visuals.widgets.inactive.bg_fill = colors.inactive_tab_color32();
+
+        // Apply selection colors
+        visuals.selection.bg_fill = colors.accent_color32();
+        visuals.selection.stroke.color = colors.accent_color32();
+
+        // Apply text colors through override_text_color
+        visuals.override_text_color = Some(colors.text_primary_color32());
+
+        ctx.set_visuals(visuals);
+    }
+
     pub fn is_tab_enabled(&self, tab: &crate::app::Tab) -> bool {
         if *tab == crate::app::Tab::Settings {
             return true; // Settings tab is always enabled
@@ -148,12 +350,6 @@ impl AppSettings {
     pub fn get_tab_config_mut(&mut self, tab: &crate::app::Tab) -> Option<&mut TabConfig> {
         self.tab_configs
             .iter_mut()
-            .find(|config| config.tab_type == *tab)
-    }
-
-    pub fn get_tab_config(&self, tab: &crate::app::Tab) -> Option<&TabConfig> {
-        self.tab_configs
-            .iter()
             .find(|config| config.tab_type == *tab)
     }
 
@@ -228,4 +424,3 @@ impl AppSettings {
         }
     }
 }
-

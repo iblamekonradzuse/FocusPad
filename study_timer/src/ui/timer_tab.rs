@@ -258,7 +258,7 @@ pub fn display(
         });
 
         // Alarm settings
-        ui.collapsing("⚙️ Alarm Settings", |ui| {
+        ui.collapsing("Alarm Settings", |ui| {
             ALARM_VOLUME.with(|vol| {
                 let mut volume = *vol.borrow();
                 ui.horizontal(|ui| {
@@ -427,4 +427,3 @@ fn stop_alarm_sound() {
         *playing.borrow_mut() = false;
     });
 }
-

@@ -51,5 +51,56 @@
       "enabled": true,
       "custom_name": null
     }
-  ]
+  ],
+  "theme_preset": "Forest",
+  "custom_colors": {
+    "background": [
+      32,
+      32,
+      32,
+      255
+    ],
+    "navigation_background": [
+      48,
+      48,
+      48,
+      255
+    ],
+    "active_tab": [
+      68,
+      68,
+      68,
+      255
+    ],
+    "inactive_tab": [
+      96,
+      96,
+      96,
+      255
+    ],
+    "text_primary": [
+      255,
+      255,
+      255,
+      255
+    ],
+    "text_secondary": [
+      180,
+      180,
+      180,
+      255
+    ],
+    "accent": [
+      69,
+      74,
+      108,
+      255
+    ],
+    "panel_background": [
+      40,
+      40,
+      40,
+      255
+    ]
+  }
 }

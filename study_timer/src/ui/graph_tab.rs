@@ -49,7 +49,7 @@ pub fn display(ui: &mut Ui, study_data: &StudyData, status: &mut StatusMessage) 
             let mut state = state.borrow_mut();
 
             if ui
-                .add_sized([button_width, 24.0], egui::Button::new("← Previous Week"))
+                .add_sized([button_width, 24.0], egui::Button::new("Previous Week"))
                 .clicked()
             {
                 state.week_offset -= 1;
@@ -65,7 +65,7 @@ pub fn display(ui: &mut Ui, study_data: &StudyData, status: &mut StatusMessage) 
             }
 
             if ui
-                .add_sized([button_width, 24.0], egui::Button::new("Next Week →"))
+                .add_sized([button_width, 24.0], egui::Button::new("Next Week "))
                 .clicked()
             {
                 state.week_offset += 1;
