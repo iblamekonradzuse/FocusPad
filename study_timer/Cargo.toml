@@ -11,6 +11,14 @@ serde = { version = "1.0", features = ["derive"] } # Serialization framework
 serde_json = "1.0"       # JSON serialization/deserialization
 charming = "0.4.0"
 rodio = "0.16.0"         # Audio playback library
-image = "0.24.6"  # For image loading and processing
-regex = "1.9.1"   # For parsing image markdown syntax
-rfd = "0.12.0"    # Optional: For native file dialogs when inserting images
+image = "0.24.6"         # For image loading and processing
+regex = "1.9.1"          # For parsing image markdown syntax
+rfd = "0.12.0"           # Optional: For native file dialogs when inserting images
+uuid = { version = "1.0", features = ["v4", "serde"] } # For unique tab IDs
+
+[dependencies.egui_plot]
+version = "0.24"
+optional = true
+
+[features]
+default = ["egui_plot"]
