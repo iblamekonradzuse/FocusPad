@@ -44,7 +44,7 @@ impl SplitViewUI {
 
         // Render top pane
         let mut top_ui = ui.child_ui(top_rect, egui::Layout::top_down(egui::Align::LEFT));
-        Self::render_tab_content(&mut top_ui, app, ctx, &split_pane.left_tab_id);
+        Self::render_split_pane_content(&mut top_ui, app, ctx, &split_pane.left_tab_id, false);
 
         // Render splitter
         let splitter_rect = egui::Rect::from_min_size(
@@ -71,9 +71,17 @@ impl SplitViewUI {
             ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeVertical);
         }
 
+        // Handle tab drops on splitter for swapping
+        if let Some(_dragging_tab_id) = &app.dragging_tab_id {
+            if splitter_response.hovered() && ui.input(|i| i.pointer.any_released()) {
+                app.tab_manager.swap_split_tabs();
+                app.status.show("Split panes swapped");
+            }
+        }
+
         // Render bottom pane
         let mut bottom_ui = ui.child_ui(bottom_rect, egui::Layout::top_down(egui::Align::LEFT));
-        Self::render_tab_content(&mut bottom_ui, app, ctx, &split_pane.right_tab_id);
+        Self::render_split_pane_content(&mut bottom_ui, app, ctx, &split_pane.right_tab_id, true);
     }
 
     fn render_vertical_split(
@@ -102,7 +110,7 @@ impl SplitViewUI {
 
         // Render left pane
         let mut left_ui = ui.child_ui(left_rect, egui::Layout::top_down(egui::Align::LEFT));
-        Self::render_tab_content(&mut left_ui, app, ctx, &split_pane.left_tab_id);
+        Self::render_split_pane_content(&mut left_ui, app, ctx, &split_pane.left_tab_id, false);
 
         // Render splitter
         let splitter_rect = egui::Rect::from_min_size(
@@ -129,17 +137,31 @@ impl SplitViewUI {
             ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
         }
 
+        // Handle tab drops on splitter for swapping
+        if let Some(_dragging_tab_id) = &app.dragging_tab_id {
+            if splitter_response.hovered() && ui.input(|i| i.pointer.any_released()) {
+                app.tab_manager.swap_split_tabs();
+                app.status.show("Split panes swapped");
+            }
+        }
+
         // Render right pane
         let mut right_ui = ui.child_ui(right_rect, egui::Layout::top_down(egui::Align::LEFT));
-        Self::render_tab_content(&mut right_ui, app, ctx, &split_pane.right_tab_id);
+        Self::render_split_pane_content(&mut right_ui, app, ctx, &split_pane.right_tab_id, true);
     }
 
-    fn render_tab_content(
+    fn render_split_pane_content(
         ui: &mut egui::Ui,
         app: &mut StudyTimerApp,
         ctx: &egui::Context,
         tab_id: &str,
+        is_right_pane: bool,
     ) {
+        // Track which pane is being used
+        if ui.rect_contains_pointer(ui.available_rect_before_wrap()) {
+            app.update_last_used_split_pane(is_right_pane);
+        }
+
         // Get the tab information first to avoid borrowing conflicts
         let tab_info = app
             .tab_manager
@@ -156,18 +178,66 @@ impl SplitViewUI {
                 .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
 
             content_frame.show(ui, |ui| {
-                // Show tab title
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(&title).strong());
+                // Tab header with controls - only show on one pane (left/top)
+                if !is_right_pane {
+                    ui.horizontal(|ui| {
+                        // Tab selector dropdown
+                        Self::render_split_tab_selector(ui, app, is_right_pane);
 
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("❌").clicked() {
-                            app.tab_manager.close_split();
-                        }
+                        ui.separator();
+
+                        // Current tab title
+                        ui.label(egui::RichText::new(&title).strong());
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            // Close split button
+                            if ui.button("❌ Close Split").clicked() {
+                                app.tab_manager.close_split();
+                            }
+
+                            // Swap panes button
+                            if ui.button("🔄 Swap").clicked() {
+                                app.tab_manager.swap_split_tabs();
+                            }
+                        });
                     });
-                });
+                } else {
+                    // For right pane, just show tab selector and title
+                    ui.horizontal(|ui| {
+                        // Tab selector dropdown
+                        Self::render_split_tab_selector(ui, app, is_right_pane);
+
+                        ui.separator();
+
+                        // Current tab title
+                        ui.label(egui::RichText::new(&title).strong());
+                    });
+                }
 
                 ui.separator();
+
+                // Handle drop zones for tab dragging
+                let pane_rect = ui.available_rect_before_wrap();
+                if let Some(dragging_tab_id) = &app.dragging_tab_id {
+                    if ui.rect_contains_pointer(pane_rect) {
+                        // Visual feedback for drop zone
+                        ui.painter().rect_stroke(
+                            pane_rect,
+                            egui::Rounding::same(5.0),
+                            egui::Stroke::new(3.0, colors.accent_color32().gamma_multiply(0.7)),
+                        );
+
+                        // Handle drop
+                        if ui.input(|i| i.pointer.any_released()) {
+                            app.tab_manager
+                                .move_tab_to_split(dragging_tab_id, is_right_pane);
+                            app.status.show(&format!(
+                                "Tab moved to {} pane",
+                                if is_right_pane { "right" } else { "left" }
+                            ));
+                        }
+                    }
+                }
 
                 // Render tab content based on type
                 match tab_type {
@@ -214,6 +284,50 @@ impl SplitViewUI {
                     ),
                 }
             });
+        }
+    }
+
+    fn render_split_tab_selector(ui: &mut egui::Ui, app: &mut StudyTimerApp, is_right_pane: bool) {
+        let current_tab_id = if is_right_pane {
+            app.tab_manager
+                .get_split_pane()
+                .map(|s| s.right_tab_id.clone())
+        } else {
+            app.tab_manager
+                .get_split_pane()
+                .map(|s| s.left_tab_id.clone())
+        };
+
+        if let Some(current_id) = current_tab_id {
+            let current_title = app
+                .tab_manager
+                .get_tab(&current_id)
+                .map(|tab| tab.get_display_title())
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            // Collect tab information first to avoid borrowing conflicts
+            let tab_options: Vec<(String, String)> = app
+                .tab_manager
+                .tabs
+                .iter()
+                .map(|tab| (tab.id.clone(), tab.get_display_title()))
+                .collect();
+
+            egui::ComboBox::from_id_source(format!("split_tab_selector_{}", is_right_pane))
+                .selected_text(current_title)
+                .width(120.0)
+                .show_ui(ui, |ui| {
+                    for (tab_id, tab_title) in tab_options {
+                        let is_selected = tab_id == current_id;
+                        let selectable = ui.selectable_label(is_selected, tab_title);
+
+                        if selectable.clicked() && !is_selected {
+                            app.tab_manager.set_split_active_tab(&tab_id, is_right_pane);
+                            // Update the last used split pane when user interacts with it
+                            app.update_last_used_split_pane(is_right_pane);
+                        }
+                    }
+                });
         }
     }
 }

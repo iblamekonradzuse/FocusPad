@@ -30,7 +30,7 @@ impl TabSelectorUI {
         &mut self,
         ctx: &egui::Context,
         settings: &AppSettings,
-        status: &mut StatusMessage,
+        _status: &mut StatusMessage,
     ) -> Option<Tab> {
         if !self.is_open {
             return None;

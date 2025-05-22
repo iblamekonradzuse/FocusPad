@@ -169,14 +169,10 @@ impl TabManager {
         self.tabs.iter().find(|t| t.id == self.active_tab_id)
     }
 
-    pub fn get_active_tab_mut(&mut self) -> Option<&mut TabInstance> {
-        self.tabs.iter_mut().find(|t| t.id == self.active_tab_id)
-    }
-
     pub fn get_tab(&self, tab_id: &str) -> Option<&TabInstance> {
         self.tabs.iter().find(|t| t.id == tab_id)
     }
-
+    #[allow(dead_code)]
     pub fn get_tab_mut(&mut self, tab_id: &str) -> Option<&mut TabInstance> {
         self.tabs.iter_mut().find(|t| t.id == tab_id)
     }
@@ -190,14 +186,23 @@ impl TabManager {
     pub fn create_split(&mut self, direction: SplitDirection) {
         if self.tabs.len() >= 2 && self.split_pane.is_none() {
             let left_tab_id = self.active_tab_id.clone();
+
+            // Find a suitable tab for the right pane (prefer non-Settings tabs)
             let right_tab_id = self
                 .tabs
                 .iter()
-                .find(|t| t.id != left_tab_id)
+                .find(|t| t.id != left_tab_id && t.tab_type != Tab::Settings)
+                .or_else(|| self.tabs.iter().find(|t| t.id != left_tab_id))
                 .map(|t| t.id.clone())
                 .unwrap_or_else(|| {
-                    // Create a new tab for the split
-                    self.add_tab(Tab::Markdown)
+                    // Create a new tab for the split (avoid Settings unless explicitly requested)
+                    let active_tab = self.get_active_tab();
+                    let new_tab_type = if active_tab.map(|t| &t.tab_type) == Some(&Tab::Settings) {
+                        Tab::Settings
+                    } else {
+                        Tab::Markdown
+                    };
+                    self.add_tab(new_tab_type)
                 });
 
             self.split_pane = Some(SplitPane {
@@ -222,19 +227,19 @@ impl TabManager {
             split.split_ratio = ratio.clamp(0.1, 0.9);
         }
     }
-
+    #[allow(dead_code)]
     pub fn set_tab_modified(&mut self, tab_id: &str, modified: bool) {
         if let Some(tab) = self.get_tab_mut(tab_id) {
             tab.is_modified = modified;
         }
     }
-
+    #[allow(dead_code)]
     pub fn set_tab_title(&mut self, tab_id: &str, title: String) {
         if let Some(tab) = self.get_tab_mut(tab_id) {
             tab.title = title;
         }
     }
-
+    #[allow(dead_code)]
     pub fn handle_file_drop(&mut self, file_path: String) -> Option<String> {
         // Determine tab type based on file extension
         let extension = std::path::Path::new(&file_path)
@@ -250,7 +255,7 @@ impl TabManager {
 
         Some(self.add_file_tab(tab_type, file_path))
     }
-
+    #[allow(dead_code)]
     pub fn get_available_tab_types(&self, settings: &AppSettings) -> Vec<Tab> {
         settings
             .get_enabled_tabs()
@@ -258,5 +263,53 @@ impl TabManager {
             .map(|config| config.tab_type.clone())
             .collect()
     }
-}
 
+    pub fn reorder_tab(&mut self, tab_id: &str, new_index: usize) {
+        if let Some(old_index) = self.tabs.iter().position(|t| t.id == tab_id) {
+            if old_index != new_index && new_index < self.tabs.len() {
+                let tab = self.tabs.remove(old_index);
+                let insert_index = if new_index > old_index {
+                    new_index.saturating_sub(1)
+                } else {
+                    new_index
+                };
+                self.tabs.insert(insert_index.min(self.tabs.len()), tab);
+            }
+        }
+    }
+
+    pub fn move_tab_to_split(&mut self, tab_id: &str, is_right_pane: bool) -> bool {
+        if let Some(ref mut split) = self.split_pane {
+            if is_right_pane {
+                split.right_tab_id = tab_id.to_string();
+            } else {
+                split.left_tab_id = tab_id.to_string();
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn swap_split_tabs(&mut self) {
+        if let Some(ref mut split) = self.split_pane {
+            std::mem::swap(&mut split.left_tab_id, &mut split.right_tab_id);
+        }
+    }
+
+    pub fn get_split_pane(&self) -> Option<&SplitPane> {
+        self.split_pane.as_ref()
+    }
+
+    pub fn set_split_active_tab(&mut self, tab_id: &str, is_right_pane: bool) {
+        if let Some(ref mut split) = self.split_pane {
+            if is_right_pane {
+                split.right_tab_id = tab_id.to_string();
+            } else {
+                split.left_tab_id = tab_id.to_string();
+            }
+            // Also set as the globally active tab
+            self.set_active_tab(tab_id);
+        }
+    }
+}

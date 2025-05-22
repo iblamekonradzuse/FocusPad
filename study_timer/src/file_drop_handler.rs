@@ -8,6 +8,7 @@ pub struct DroppedFile {
 }
 
 pub struct FileDropHandler {
+    #[allow(dead_code)]
     pub dropped_files: Vec<DroppedFile>,
 }
 
@@ -70,7 +71,6 @@ impl FileDropHandler {
             "py" | "python" => Some(Tab::Markdown),
             "js" | "javascript" => Some(Tab::Markdown),
             "ts" | "typescript" => Some(Tab::Markdown),
-            "ts" | "typescript" => Some(Tab::Markdown),
             "html" | "htm" => Some(Tab::Markdown),
             "css" => Some(Tab::Markdown),
             "xml" => Some(Tab::Markdown),
@@ -80,38 +80,5 @@ impl FileDropHandler {
             "log" => Some(Tab::Markdown),
             _ => None, // Unsupported file type
         }
-    }
-
-    pub fn is_supported_file(&self, path: &PathBuf) -> bool {
-        self.determine_tab_type(path).is_some()
-    }
-
-    pub fn get_supported_extensions(&self) -> Vec<&'static str> {
-        vec![
-            "md",
-            "markdown",
-            "txt",
-            "text",
-            "json",
-            "rs",
-            "rust",
-            "py",
-            "python",
-            "js",
-            "javascript",
-            "ts",
-            "typescript",
-            "html",
-            "htm",
-            "css",
-            "xml",
-            "yaml",
-            "yml",
-            "toml",
-            "ini",
-            "cfg",
-            "conf",
-            "log",
-        ]
     }
 }

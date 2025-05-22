@@ -75,6 +75,11 @@ pub struct StudyTimerApp {
     pub keyboard_handler: KeyboardHandler,
     pub tab_selector: TabSelectorUI,
     pub file_drop_handler: FileDropHandler,
+    // Tab dragging state
+    pub dragging_tab_id: Option<String>,
+    pub drag_start_pos: Option<egui::Pos2>,
+    // Track last used split pane
+    pub last_used_split_pane: bool, // false = left, true = right
 }
 
 impl StudyTimerApp {
@@ -97,6 +102,9 @@ impl StudyTimerApp {
             keyboard_handler: KeyboardHandler::new(),
             tab_selector: TabSelectorUI::new(),
             file_drop_handler: FileDropHandler::new(),
+            dragging_tab_id: None,
+            drag_start_pos: None,
+            last_used_split_pane: false, // Default to left pane
         }
     }
 
@@ -134,77 +142,208 @@ impl StudyTimerApp {
             .inner_margin(egui::Margin::symmetric(8.0, 4.0));
 
         tab_bar_frame.show(ui, |ui| {
-            egui::ScrollArea::horizontal()
-                .id_source("tab_bar_scroll")
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        for tab in self.tab_manager.tabs.clone() {
-                            let is_active = tab.id == self.tab_manager.active_tab_id;
+            ui.horizontal(|ui| {
+                // Left side - regular tabs (excluding Settings)
+                egui::ScrollArea::horizontal()
+                    .id_source("tab_bar_scroll")
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let tabs_to_render: Vec<_> = self
+                                .tab_manager
+                                .tabs
+                                .iter()
+                                .filter(|tab| tab.tab_type != Tab::Settings)
+                                .cloned()
+                                .collect();
 
-                            ui.horizontal(|ui| {
-                                let button_color = if is_active {
-                                    colors.active_tab_color32()
-                                } else {
-                                    colors.inactive_tab_color32()
-                                };
+                            for (index, tab) in tabs_to_render.iter().enumerate() {
+                                let is_active = tab.id == self.tab_manager.active_tab_id;
+                                self.render_draggable_tab(ui, tab, is_active, index);
+                            }
 
-                                let text_color = if is_active {
-                                    colors.text_primary_color32()
-                                } else {
-                                    colors.text_secondary_color32()
-                                };
+                            // New tab button
+                            let new_tab_button = egui::Button::new("+")
+                                .fill(colors.accent_color32())
+                                .stroke(egui::Stroke::new(1.0, colors.text_primary_color32()));
 
-                                let button = egui::Button::new(
-                                    egui::RichText::new(&tab.get_display_title()).color(text_color),
-                                )
+                            if ui.add(new_tab_button).clicked() {
+                                self.tab_selector.show();
+                            }
+
+                            // Split controls - only show if not in split mode
+                            if !self.tab_manager.is_split_active() {
+                                ui.separator();
+
+                                if ui.button("⬌ Split V").clicked() {
+                                    self.tab_manager.create_split(SplitDirection::Vertical);
+                                }
+                                if ui.button("⬍ Split H").clicked() {
+                                    self.tab_manager.create_split(SplitDirection::Horizontal);
+                                }
+                            }
+                        });
+                    });
+
+                // Right side - Settings tab with spacing
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Find settings tab info first to avoid borrowing conflicts
+                    let settings_tab_info = self
+                        .tab_manager
+                        .tabs
+                        .iter()
+                        .find(|tab| tab.tab_type == Tab::Settings)
+                        .map(|tab| (tab.id.clone(), tab.id == self.tab_manager.active_tab_id));
+
+                    if let Some((settings_tab_id, is_active)) = settings_tab_info {
+                        let button_color = if is_active {
+                            colors.active_tab_color32()
+                        } else {
+                            colors.inactive_tab_color32()
+                        };
+
+                        let text_color = if is_active {
+                            colors.text_primary_color32()
+                        } else {
+                            colors.text_secondary_color32()
+                        };
+
+                        let button =
+                            egui::Button::new(egui::RichText::new("⚙️ Settings").color(text_color))
                                 .fill(button_color)
                                 .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
 
-                                if ui.add(button).clicked() {
-                                    self.tab_manager.set_active_tab(&tab.id);
-                                }
-
-                                // Close button for closeable tabs
-                                if tab.can_close {
-                                    let close_button = egui::Button::new("×")
-                                        .fill(egui::Color32::TRANSPARENT)
-                                        .stroke(egui::Stroke::NONE)
-                                        .min_size(egui::Vec2::new(16.0, 16.0));
-
-                                    if ui.add(close_button).clicked() {
-                                        self.tab_manager.close_tab(&tab.id);
-                                    }
-                                }
-                            });
-                        }
-
-                        // New tab button
-                        let new_tab_button = egui::Button::new("+")
-                            .fill(colors.accent_color32())
-                            .stroke(egui::Stroke::new(1.0, colors.text_primary_color32()));
-
-                        if ui.add(new_tab_button).clicked() {
-                            self.tab_selector.show();
-                        }
-
-                        // Split controls
-                        ui.separator();
-
-                        if !self.tab_manager.is_split_active() {
-                            if ui.button("⬌ Split V").clicked() {
-                                self.tab_manager.create_split(SplitDirection::Vertical);
-                            }
-                            if ui.button("⬍ Split H").clicked() {
-                                self.tab_manager.create_split(SplitDirection::Horizontal);
-                            }
-                        } else {
-                            if ui.button("❌ Close Split").clicked() {
-                                self.tab_manager.close_split();
+                        if ui.add(button).clicked() {
+                            if self.tab_manager.is_split_active() {
+                                // Open in last used split pane
+                                self.tab_manager.set_split_active_tab(
+                                    &settings_tab_id,
+                                    self.last_used_split_pane,
+                                );
+                            } else {
+                                self.tab_manager.set_active_tab(&settings_tab_id);
                             }
                         }
-                    });
+                    }
                 });
+            });
         });
+    }
+
+    fn render_draggable_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        tab: &crate::tab_manager::TabInstance,
+        is_active: bool,
+        index: usize,
+    ) {
+        let colors = self.settings.get_current_colors();
+
+        ui.horizontal(|ui| {
+            let button_color = if is_active {
+                colors.active_tab_color32()
+            } else {
+                colors.inactive_tab_color32()
+            };
+
+            let text_color = if is_active {
+                colors.text_primary_color32()
+            } else {
+                colors.text_secondary_color32()
+            };
+
+            let button =
+                egui::Button::new(egui::RichText::new(&tab.get_display_title()).color(text_color))
+                    .fill(button_color)
+                    .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
+
+            let response = ui.add(button);
+
+            // Handle tab clicking
+            if response.clicked() && self.dragging_tab_id.is_none() {
+                if self.tab_manager.is_split_active() {
+                    // Open in last used split pane
+                    self.tab_manager
+                        .set_split_active_tab(&tab.id, self.last_used_split_pane);
+                } else {
+                    self.tab_manager.set_active_tab(&tab.id);
+                }
+            }
+
+            // Handle tab dragging
+            if response.drag_started() {
+                self.dragging_tab_id = Some(tab.id.clone());
+                self.drag_start_pos = response.interact_pointer_pos();
+            }
+
+            if response.dragged() && self.dragging_tab_id == Some(tab.id.clone()) {
+                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+
+                // Visual feedback for dragging
+                if let Some(pointer_pos) = response.interact_pointer_pos() {
+                    ui.painter().circle_filled(
+                        pointer_pos,
+                        8.0,
+                        colors.accent_color32().gamma_multiply(0.7),
+                    );
+                }
+            }
+
+            // Handle drop logic
+            if response.drag_released() && self.dragging_tab_id == Some(tab.id.clone()) {
+                if let Some(drop_pos) = response.interact_pointer_pos() {
+                    self.handle_tab_drop(drop_pos, &tab.id);
+                }
+                self.dragging_tab_id = None;
+                self.drag_start_pos = None;
+            }
+
+            // Handle drop zones for reordering
+            if self.dragging_tab_id.is_some() && self.dragging_tab_id != Some(tab.id.clone()) {
+                if response.hovered() {
+                    // Visual feedback for drop zone
+                    let rect = response.rect;
+                    ui.painter().rect_stroke(
+                        rect.expand(2.0),
+                        egui::Rounding::same(3.0),
+                        egui::Stroke::new(2.0, colors.accent_color32()),
+                    );
+
+                    // Handle reordering drop
+                    if ui.input(|i| i.pointer.any_released()) {
+                        if let Some(dragging_id) = &self.dragging_tab_id {
+                            self.tab_manager.reorder_tab(dragging_id, index);
+                        }
+                    }
+                }
+            }
+
+            // Close button for closeable tabs
+            if tab.can_close {
+                let close_button = egui::Button::new("×")
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE)
+                    .min_size(egui::Vec2::new(16.0, 16.0));
+
+                if ui.add(close_button).clicked() {
+                    self.tab_manager.close_tab(&tab.id);
+                }
+            }
+        });
+    }
+
+    fn handle_tab_drop(&mut self, _drop_pos: egui::Pos2, _tab_id: &str) {
+        // Check if dropping on a split pane
+        if self.tab_manager.is_split_active() {
+            // Logic to determine which split pane the tab is being dropped on
+            // This would need to be enhanced based on your split view implementation
+            // For now, just show a status message
+            self.status
+                .show("Tab dropped - split functionality needs enhancement");
+        }
+    }
+
+    pub fn update_last_used_split_pane(&mut self, is_right_pane: bool) {
+        self.last_used_split_pane = is_right_pane;
     }
 
     fn render_navigation(&mut self, ui: &mut egui::Ui) {
@@ -387,7 +526,13 @@ impl eframe::App for StudyTimerApp {
             .tab_selector
             .display(ctx, &self.settings, &mut self.status)
         {
-            self.tab_manager.add_tab(selected_tab);
+            let new_tab_id = self.tab_manager.add_tab(selected_tab);
+
+            // If in split mode, open in last used split pane
+            if self.tab_manager.is_split_active() {
+                self.tab_manager
+                    .set_split_active_tab(&new_tab_id, self.last_used_split_pane);
+            }
         }
 
         // Request a repaint frequently if the timer is running

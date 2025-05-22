@@ -1,4 +1,4 @@
-use eframe::egui::{self, Key, Modifiers};
+use eframe::egui::{self, Key};
 
 pub struct KeyboardHandler {
     pub new_tab_requested: bool,
@@ -60,14 +60,6 @@ impl KeyboardHandler {
                 self.close_split_requested = true;
             }
         });
-    }
-
-    pub fn reset(&mut self) {
-        self.new_tab_requested = false;
-        self.close_tab_requested = false;
-        self.split_horizontal_requested = false;
-        self.split_vertical_requested = false;
-        self.close_split_requested = false;
     }
 }
 
