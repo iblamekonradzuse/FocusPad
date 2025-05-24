@@ -1,5 +1,8 @@
 pub mod calculator_tab;
 pub mod file_browser;
+pub mod flashcard;
+pub mod flashcard_tab_ui;
+pub mod flashcard_ui;
 pub mod graph_tab;
 pub mod markdown_editor;
 pub mod markdown_renderer;

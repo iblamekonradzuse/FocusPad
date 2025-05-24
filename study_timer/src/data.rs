@@ -1,15 +1,16 @@
+use crate::ui::flashcard::{Card, Deck, Grade};
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 
-// Define the study data structures
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StudySession {
-    pub date: String, // YYYY-MM-DD format
+    pub date: String,
     pub minutes: f64,
-    pub description: Option<String>, // Optional description of the study session
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +18,7 @@ pub struct Todo {
     pub id: u64,
     pub text: String,
     pub completed: bool,
-    pub created_at: String, // ISO date format
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,8 +26,8 @@ pub struct Reminder {
     pub id: u64,
     pub title: String,
     pub description: Option<String>,
-    pub due_date: String, // YYYY-MM-DD format
-    pub created_at: String, // ISO date format
+    pub due_date: String,
+    pub created_at: String,
     pub notification_periods: Vec<NotificationPeriod>,
     pub is_completed: bool,
 }
@@ -36,7 +37,7 @@ pub enum NotificationPeriod {
     OneDay,
     ThreeDays,
     OneWeek,
-    Custom(u32), // Custom days before due date
+    Custom(u32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -44,24 +45,26 @@ pub struct StudyData {
     pub sessions: Vec<StudySession>,
     pub todos: Vec<Todo>,
     pub reminders: Vec<Reminder>,
+    pub decks: Vec<Deck>,
+    pub next_deck_id: u64,
 }
 
 impl StudyData {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let data_path = Path::new("study_data.json");
-
         if !data_path.exists() {
             return Ok(StudyData {
                 sessions: Vec::new(),
                 todos: Vec::new(),
-                reminders: Vec::new(), // Initialize empty reminders
+                reminders: Vec::new(),
+                decks: Vec::new(),
+                next_deck_id: 1,
             });
         }
 
         let mut file = File::open(data_path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
-
         let data: StudyData = serde_json::from_str(&contents)?;
         Ok(data)
     }
@@ -73,7 +76,6 @@ impl StudyData {
             .truncate(true)
             .create(true)
             .open("study_data.json")?;
-
         file.write_all(json.as_bytes())?;
         Ok(())
     }
@@ -88,8 +90,6 @@ impl StudyData {
             return Ok(());
         }
 
-        // Check if there's already a session for this date with the same description
-        // If description is None, combine with any existing session for that date with no description
         if let Some(description) = &description {
             if let Some(session) = self
                 .sessions
@@ -152,7 +152,6 @@ impl StudyData {
             .sum()
     }
 
-    // Todo methods
     pub fn add_todo(&mut self, text: String) -> Result<(), Box<dyn std::error::Error>> {
         let now = Local::now();
         let todo = Todo {
@@ -171,7 +170,7 @@ impl StudyData {
         let mut completed = false;
         if let Some(todo) = self.todos.iter_mut().find(|t| t.id == id) {
             todo.completed = !todo.completed;
-            completed = todo.completed; // Store completion state before saving
+            completed = todo.completed;
         }
         self.save()?;
         Ok(completed)
@@ -214,8 +213,7 @@ impl StudyData {
             1
         }
     }
-    
-    // Reminder methods
+
     pub fn add_reminder(
         &mut self,
         title: String,
@@ -292,4 +290,36 @@ impl StudyData {
             1
         }
     }
+
+    pub fn add_deck(
+        &mut self,
+        name: String,
+        description: Option<String>,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let deck_id = self.next_deck_id;
+        let mut deck = Deck::new(name, description);
+        deck.id = deck_id;
+        self.decks.push(deck);
+        self.next_deck_id += 1;
+        self.save()?;
+        Ok(deck_id)
+    }
+
+    pub fn get_deck(&mut self, deck_id: u64) -> Option<&mut Deck> {
+        self.decks.iter_mut().find(|d| d.id == deck_id)
+    }
+
+    pub fn delete_deck(&mut self, deck_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.decks.retain(|d| d.id != deck_id);
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn get_due_cards_count(&self) -> usize {
+        self.decks
+            .iter()
+            .flat_map(|deck| deck.get_due_cards())
+            .count()
+    }
 }
+

@@ -10,7 +10,6 @@ mod tab_selector_ui;
 mod terminal;
 mod timer;
 mod ui;
-
 use app::StudyTimerApp;
 
 fn main() -> Result<(), eframe::Error> {
@@ -28,4 +27,3 @@ fn main() -> Result<(), eframe::Error> {
         Box::new(|cc| Box::new(StudyTimerApp::new(cc))),
     )
 }
-

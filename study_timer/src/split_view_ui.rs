@@ -269,6 +269,9 @@ impl SplitViewUI {
                     crate::app::Tab::Reminder => {
                         crate::ui::reminder_tab::display(ui, &mut app.study_data, &mut app.status)
                     }
+                    crate::app::Tab::Flashcards => {
+                        crate::ui::flashcard_tab_ui::display(ui, ctx, app)
+                    }
                     crate::app::Tab::Calculator => {
                         crate::ui::calculator_tab::display(ui, &mut app.status)
                     }
@@ -331,4 +334,3 @@ impl SplitViewUI {
         }
     }
 }
-

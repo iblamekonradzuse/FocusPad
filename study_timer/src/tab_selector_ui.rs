@@ -115,6 +115,7 @@ fn get_tab_icon(tab_type: &Tab) -> &'static str {
         Tab::Graph => "📈",
         Tab::Todo => "✅",
         Tab::Calculator => "🧮",
+        Tab::Flashcards => "",
         Tab::Markdown => "📄",
         Tab::Reminder => "🔔",
         Tab::Terminal => "💻",
@@ -134,5 +135,6 @@ fn get_tab_description(tab_type: &Tab) -> &'static str {
         Tab::Reminder => "Set reminders and notifications",
         Tab::Terminal => "Built-in terminal emulator",
         Tab::Settings => "Configure application settings",
+        Tab::Flashcards => "Anki like flashcards",
     }
 }

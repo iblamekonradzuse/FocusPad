@@ -1,5 +1,5 @@
 {
-  "navigation_layout": "Horizontal",
+  "navigation_layout": "Vertical",
   "tab_configs": [
     {
       "tab_type": "Timer",
@@ -52,7 +52,7 @@
       "custom_name": null
     }
   ],
-  "theme_preset": "Dark",
+  "theme_preset": "Ocean",
   "custom_colors": {
     "background": [
       32,

@@ -9,6 +9,7 @@ use crate::tab_selector_ui::TabSelectorUI;
 use crate::terminal::TerminalEmulator;
 use crate::timer::Timer;
 use crate::ui;
+use crate::ui::flashcard_ui::{DeckManagerUI, FlashcardReviewer};
 
 use eframe::{egui, CreationContext};
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,7 @@ pub enum Tab {
     Reminder,
     Terminal,
     Settings,
+    Flashcards,
 }
 
 pub struct StatusMessage {
@@ -65,21 +67,20 @@ pub struct StudyTimerApp {
     pub timer: Timer,
     pub study_data: StudyData,
     pub settings: AppSettings,
-    pub current_tab: Tab, // Keep for backward compatibility
+    pub current_tab: Tab,
     pub status: StatusMessage,
     pub debug_tools: DebugTools,
     pub markdown_editor: Option<crate::ui::markdown_editor::MarkdownEditor>,
     pub terminal: TerminalEmulator,
-    // New tab management system
     pub tab_manager: TabManager,
     pub keyboard_handler: KeyboardHandler,
     pub tab_selector: TabSelectorUI,
     pub file_drop_handler: FileDropHandler,
-    // Tab dragging state
     pub dragging_tab_id: Option<String>,
     pub drag_start_pos: Option<egui::Pos2>,
-    // Track last used split pane
-    pub last_used_split_pane: bool, // false = left, true = right
+    pub last_used_split_pane: bool,
+    pub flashcard_reviewer: FlashcardReviewer,
+    pub deck_manager_ui: DeckManagerUI,
 }
 
 impl StudyTimerApp {
@@ -104,7 +105,9 @@ impl StudyTimerApp {
             file_drop_handler: FileDropHandler::new(),
             dragging_tab_id: None,
             drag_start_pos: None,
-            last_used_split_pane: false, // Default to left pane
+            last_used_split_pane: false,
+            flashcard_reviewer: FlashcardReviewer::new(),
+            deck_manager_ui: DeckManagerUI::new(),
         }
     }
 
@@ -136,14 +139,12 @@ impl StudyTimerApp {
     fn render_tab_bar(&mut self, ui: &mut egui::Ui) {
         let colors = self.settings.get_current_colors();
 
-        // Tab bar background
         let tab_bar_frame = egui::Frame::default()
             .fill(colors.navigation_background_color32())
             .inner_margin(egui::Margin::symmetric(8.0, 4.0));
 
         tab_bar_frame.show(ui, |ui| {
             ui.horizontal(|ui| {
-                // Left side - regular tabs (excluding Settings)
                 egui::ScrollArea::horizontal()
                     .id_source("tab_bar_scroll")
                     .show(ui, |ui| {
@@ -161,7 +162,6 @@ impl StudyTimerApp {
                                 self.render_draggable_tab(ui, tab, is_active, index);
                             }
 
-                            // New tab button
                             let new_tab_button = egui::Button::new("+")
                                 .fill(colors.accent_color32())
                                 .stroke(egui::Stroke::new(1.0, colors.text_primary_color32()));
@@ -170,7 +170,6 @@ impl StudyTimerApp {
                                 self.tab_selector.show();
                             }
 
-                            // Split controls - only show if not in split mode
                             if !self.tab_manager.is_split_active() {
                                 ui.separator();
 
@@ -184,9 +183,7 @@ impl StudyTimerApp {
                         });
                     });
 
-                // Right side - Settings tab with spacing
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Find settings tab info first to avoid borrowing conflicts
                     let settings_tab_info = self
                         .tab_manager
                         .tabs
@@ -214,7 +211,6 @@ impl StudyTimerApp {
 
                         if ui.add(button).clicked() {
                             if self.tab_manager.is_split_active() {
-                                // Open in last used split pane
                                 self.tab_manager.set_split_active_tab(
                                     &settings_tab_id,
                                     self.last_used_split_pane,
@@ -258,10 +254,8 @@ impl StudyTimerApp {
 
             let response = ui.add(button);
 
-            // Handle tab clicking
             if response.clicked() && self.dragging_tab_id.is_none() {
                 if self.tab_manager.is_split_active() {
-                    // Open in last used split pane
                     self.tab_manager
                         .set_split_active_tab(&tab.id, self.last_used_split_pane);
                 } else {
@@ -269,7 +263,6 @@ impl StudyTimerApp {
                 }
             }
 
-            // Handle tab dragging
             if response.drag_started() {
                 self.dragging_tab_id = Some(tab.id.clone());
                 self.drag_start_pos = response.interact_pointer_pos();
@@ -278,7 +271,6 @@ impl StudyTimerApp {
             if response.dragged() && self.dragging_tab_id == Some(tab.id.clone()) {
                 ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
 
-                // Visual feedback for dragging
                 if let Some(pointer_pos) = response.interact_pointer_pos() {
                     ui.painter().circle_filled(
                         pointer_pos,
@@ -288,7 +280,6 @@ impl StudyTimerApp {
                 }
             }
 
-            // Handle drop logic
             if response.drag_released() && self.dragging_tab_id == Some(tab.id.clone()) {
                 if let Some(drop_pos) = response.interact_pointer_pos() {
                     self.handle_tab_drop(drop_pos, &tab.id);
@@ -297,10 +288,8 @@ impl StudyTimerApp {
                 self.drag_start_pos = None;
             }
 
-            // Handle drop zones for reordering
             if self.dragging_tab_id.is_some() && self.dragging_tab_id != Some(tab.id.clone()) {
                 if response.hovered() {
-                    // Visual feedback for drop zone
                     let rect = response.rect;
                     ui.painter().rect_stroke(
                         rect.expand(2.0),
@@ -308,7 +297,6 @@ impl StudyTimerApp {
                         egui::Stroke::new(2.0, colors.accent_color32()),
                     );
 
-                    // Handle reordering drop
                     if ui.input(|i| i.pointer.any_released()) {
                         if let Some(dragging_id) = &self.dragging_tab_id {
                             self.tab_manager.reorder_tab(dragging_id, index);
@@ -317,7 +305,6 @@ impl StudyTimerApp {
                 }
             }
 
-            // Close button for closeable tabs
             if tab.can_close {
                 let close_button = egui::Button::new("×")
                     .fill(egui::Color32::TRANSPARENT)
@@ -332,11 +319,7 @@ impl StudyTimerApp {
     }
 
     fn handle_tab_drop(&mut self, _drop_pos: egui::Pos2, _tab_id: &str) {
-        // Check if dropping on a split pane
         if self.tab_manager.is_split_active() {
-            // Logic to determine which split pane the tab is being dropped on
-            // This would need to be enhanced based on your split view implementation
-            // For now, just show a status message
             self.status
                 .show("Tab dropped - split functionality needs enhancement");
         }
@@ -347,7 +330,6 @@ impl StudyTimerApp {
     }
 
     fn render_navigation(&mut self, ui: &mut egui::Ui) {
-        // Only render old navigation if not using the new tab system
         if self.tab_manager.tabs.is_empty() {
             let enabled_tabs = self.settings.get_enabled_tabs();
             let colors = self.settings.get_current_colors();
@@ -456,13 +438,11 @@ impl StudyTimerApp {
                 self.render_tab_content(ui, ctx, &tab_type);
             });
         } else {
-            // Fallback to old system - fix borrowing issue here
             let colors = self.settings.get_current_colors();
             let content_frame = egui::Frame::default()
                 .fill(colors.panel_background_color32())
                 .inner_margin(egui::Margin::same(10.0));
 
-            // Clone the current_tab to avoid borrowing conflict
             let current_tab = self.current_tab.clone();
             content_frame.show(ui, |ui| {
                 self.render_tab_content(ui, ctx, &current_tab);
@@ -497,20 +477,18 @@ impl StudyTimerApp {
                 &mut self.status,
                 &mut self.current_tab,
             ),
+            Tab::Flashcards => ui::flashcard_tab_ui::display(ui, ctx, self),
         }
     }
 }
 
 impl eframe::App for StudyTimerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Apply theme to the entire application
         self.settings.apply_theme(ctx);
 
-        // Handle keyboard shortcuts
         self.keyboard_handler.handle_input(ctx);
         self.handle_keyboard_shortcuts();
 
-        // Handle file drops
         let dropped_files = self
             .file_drop_handler
             .handle_dropped_files(ctx, &mut self.status);
@@ -521,28 +499,24 @@ impl eframe::App for StudyTimerApp {
             }
         }
 
-        // Handle tab selector
         if let Some(selected_tab) = self
             .tab_selector
             .display(ctx, &self.settings, &mut self.status)
         {
             let new_tab_id = self.tab_manager.add_tab(selected_tab);
 
-            // If in split mode, open in last used split pane
             if self.tab_manager.is_split_active() {
                 self.tab_manager
                     .set_split_active_tab(&new_tab_id, self.last_used_split_pane);
             }
         }
 
-        // Request a repaint frequently if the timer is running
         if self.timer.is_running {
             ctx.request_repaint();
         }
 
         let colors = self.settings.get_current_colors();
 
-        // Set the main background color
         let main_frame = egui::Frame::default()
             .fill(colors.background_color32())
             .inner_margin(egui::Margin::ZERO);
@@ -550,13 +524,11 @@ impl eframe::App for StudyTimerApp {
         egui::CentralPanel::default()
             .frame(main_frame)
             .show(ctx, |ui| {
-                // Render tab bar (new system)
                 if !self.tab_manager.tabs.is_empty() {
                     self.render_tab_bar(ui);
                     ui.separator();
                 }
 
-                // Render navigation (old system for backward compatibility)
                 self.render_navigation(ui);
 
                 if !self.tab_manager.tabs.is_empty()

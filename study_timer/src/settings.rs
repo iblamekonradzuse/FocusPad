@@ -216,6 +216,7 @@ impl TabConfig {
             crate::app::Tab::Reminder => "Reminder".to_string(),
             crate::app::Tab::Terminal => "Terminal".to_string(),
             crate::app::Tab::Settings => "Settings".to_string(),
+            crate::app::Tab::Flashcards => "Flashcards".to_string(),
         }
     }
 }
@@ -236,6 +237,7 @@ impl Default for AppSettings {
             TabConfig::new(crate::app::Tab::Stats, true),
             TabConfig::new(crate::app::Tab::Graph, true),
             TabConfig::new(crate::app::Tab::Todo, true),
+            TabConfig::new(crate::app::Tab::Flashcards, true),
             TabConfig::new(crate::app::Tab::Reminder, true),
             TabConfig::new(crate::app::Tab::Calculator, true),
             TabConfig::new(crate::app::Tab::Markdown, true),
@@ -411,6 +413,7 @@ impl AppSettings {
             crate::app::Tab::Graph,
             crate::app::Tab::Todo,
             crate::app::Tab::Reminder,
+            crate::app::Tab::Flashcards,
             crate::app::Tab::Calculator,
             crate::app::Tab::Markdown,
             crate::app::Tab::Terminal,

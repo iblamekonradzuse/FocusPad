@@ -1,84 +1,42 @@
 {
-  "sessions": [
+  "sessions": [],
+  "todos": [],
+  "reminders": [],
+  "decks": [
     {
-      "date": "2025-04-27",
-      "minutes": 120.0,
-      "description": null
-    }
-  ],
-  "todos": [
-    {
-      "id": 1,
-      "text": "a",
-      "completed": true,
-      "created_at": "2025-05-22 01:04:07"
-    }
-  ],
-  "reminders": [
-    {
-      "id": 2,
-      "title": "b",
+      "id": 0,
+      "name": "test",
       "description": null,
-      "due_date": "2025-04-28",
-      "created_at": "2025-04-27 20:49:00",
-      "notification_periods": [
-        "OneDay",
-        "ThreeDays",
-        "OneWeek"
-      ],
-      "is_completed": false
-    },
-    {
-      "id": 3,
-      "title": "c",
-      "description": null,
-      "due_date": "2025-04-29",
-      "created_at": "2025-04-27 20:49:34",
-      "notification_periods": [
-        "OneDay",
-        "ThreeDays",
-        "OneWeek",
+      "created_at": "2025-05-24 03:22:07",
+      "cards": [
         {
-          "Custom": 5
+          "id": 1,
+          "deck_id": 0,
+          "front": "question1?",
+          "back": "to be or not to be",
+          "tags": [],
+          "created_at": "2025-05-24",
+          "reviews": [],
+          "current_interval": 1,
+          "current_ease_factor": 2.5,
+          "due_date": "2025-05-24",
+          "is_new": true
+        },
+        {
+          "id": 2,
+          "deck_id": 0,
+          "front": "question 2",
+          "back": "not to be",
+          "tags": [],
+          "created_at": "2025-05-24",
+          "reviews": [],
+          "current_interval": 1,
+          "current_ease_factor": 2.5,
+          "due_date": "2025-05-24",
+          "is_new": true
         }
-      ],
-      "is_completed": false
-    },
-    {
-      "id": 4,
-      "title": "a",
-      "description": null,
-      "due_date": "2025-05-22",
-      "created_at": "2025-05-22 01:12:24",
-      "notification_periods": [],
-      "is_completed": false
-    },
-    {
-      "id": 5,
-      "title": "b",
-      "description": null,
-      "due_date": "2025-05-24",
-      "created_at": "2025-05-22 01:12:32",
-      "notification_periods": [],
-      "is_completed": false
-    },
-    {
-      "id": 6,
-      "title": "c",
-      "description": null,
-      "due_date": "2025-05-25",
-      "created_at": "2025-05-22 01:12:39",
-      "notification_periods": [],
-      "is_completed": false
-    },
-    {
-      "id": 7,
-      "title": "d",
-      "description": null,
-      "due_date": "2025-05-26",
-      "created_at": "2025-05-22 01:12:45",
-      "notification_periods": [],
-      "is_completed": false
+      ]
     }
-  ]
+  ],
+  "next_deck_id": 0
 }

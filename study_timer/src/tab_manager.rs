@@ -23,6 +23,7 @@ impl TabInstance {
             Tab::Graph => "Graph".to_string(),
             Tab::Todo => "Todo".to_string(),
             Tab::Calculator => "Calculator".to_string(),
+            Tab::Flashcards => "Flashcards".to_string(),
             Tab::Markdown => "New Markdown".to_string(),
             Tab::Reminder => "Reminder".to_string(),
             Tab::Terminal => "Terminal".to_string(),
