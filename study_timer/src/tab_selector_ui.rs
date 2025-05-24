@@ -115,7 +115,7 @@ fn get_tab_icon(tab_type: &Tab) -> &'static str {
         Tab::Graph => "📈",
         Tab::Todo => "✅",
         Tab::Calculator => "🧮",
-        Tab::Flashcards => "",
+        Tab::Flashcards => "🃏",
         Tab::Markdown => "📄",
         Tab::Reminder => "🔔",
         Tab::Terminal => "💻",
@@ -130,11 +130,11 @@ fn get_tab_description(tab_type: &Tab) -> &'static str {
         Tab::Record => "Record and manage study sessions",
         Tab::Graph => "Visualize your study data with charts",
         Tab::Todo => "Manage tasks and to-do items",
+        Tab::Flashcards => "Anki like flashcards",
         Tab::Calculator => "Built-in calculator for quick calculations",
         Tab::Markdown => "Write and edit markdown documents",
         Tab::Reminder => "Set reminders and notifications",
         Tab::Terminal => "Built-in terminal emulator",
         Tab::Settings => "Configure application settings",
-        Tab::Flashcards => "Anki like flashcards",
     }
 }

@@ -32,6 +32,11 @@
       "custom_name": null
     },
     {
+      "tab_type": "Flashcards",
+      "enabled": true,
+      "custom_name": null
+    },
+    {
       "tab_type": "Calculator",
       "enabled": true,
       "custom_name": null

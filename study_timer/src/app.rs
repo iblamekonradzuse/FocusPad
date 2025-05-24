@@ -463,6 +463,7 @@ impl StudyTimerApp {
             Tab::Record => {
                 ui::record_tab::display(ui, &mut self.study_data, &mut self.status, &self.timer)
             }
+            Tab::Flashcards => ui::flashcard_tab_ui::display(ui, ctx, self),
             Tab::Graph => ui::graph_tab::display(ui, &self.study_data, &mut self.status),
             Tab::Todo => {
                 ui::todo_tab::display(ui, &mut self.study_data, &mut self.status, &self.settings)
@@ -477,7 +478,6 @@ impl StudyTimerApp {
                 &mut self.status,
                 &mut self.current_tab,
             ),
-            Tab::Flashcards => ui::flashcard_tab_ui::display(ui, ctx, self),
         }
     }
 }
