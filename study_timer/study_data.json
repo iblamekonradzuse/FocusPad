@@ -1,5 +1,11 @@
 {
-  "sessions": [],
+  "sessions": [
+    {
+      "date": "2025-05-24",
+      "minutes": 105.0,
+      "description": null
+    }
+  ],
   "todos": [],
   "reminders": [],
   "decks": [

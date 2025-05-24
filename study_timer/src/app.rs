@@ -10,6 +10,7 @@ use crate::terminal::TerminalEmulator;
 use crate::timer::Timer;
 use crate::ui;
 use crate::ui::flashcard_ui::{DeckManagerUI, FlashcardReviewer};
+use crate::weather::WeatherWidget;
 
 use eframe::{egui, CreationContext};
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,7 @@ pub struct StudyTimerApp {
     pub last_used_split_pane: bool,
     pub flashcard_reviewer: FlashcardReviewer,
     pub deck_manager_ui: DeckManagerUI,
+    pub weather_widget: WeatherWidget,
 }
 
 impl StudyTimerApp {
@@ -89,6 +91,7 @@ impl StudyTimerApp {
         let settings = AppSettings::load().unwrap_or_default();
         let current_tab = settings.get_first_enabled_tab();
         let tab_manager = TabManager::new(&settings);
+        let weather_widget = WeatherWidget::load().unwrap_or_default();
 
         Self {
             timer: Timer::new(),
@@ -108,6 +111,7 @@ impl StudyTimerApp {
             last_used_split_pane: false,
             flashcard_reviewer: FlashcardReviewer::new(),
             deck_manager_ui: DeckManagerUI::new(),
+            weather_widget,
         }
     }
 
@@ -169,17 +173,6 @@ impl StudyTimerApp {
                             if ui.add(new_tab_button).clicked() {
                                 self.tab_selector.show();
                             }
-
-                            if !self.tab_manager.is_split_active() {
-                                ui.separator();
-
-                                if ui.button("⬌ Split V").clicked() {
-                                    self.tab_manager.create_split(SplitDirection::Vertical);
-                                }
-                                if ui.button("⬍ Split H").clicked() {
-                                    self.tab_manager.create_split(SplitDirection::Horizontal);
-                                }
-                            }
                         });
                     });
 
@@ -218,6 +211,25 @@ impl StudyTimerApp {
                             } else {
                                 self.tab_manager.set_active_tab(&settings_tab_id);
                             }
+                        }
+                    }
+
+                    // Add weather widget
+                    ui.separator();
+                    if self.weather_widget.render(ui) {
+                        // Save weather settings when city changes
+                        let _ = self.weather_widget.save();
+                    }
+
+                    // Add split buttons next to weather widget
+                    if !self.tab_manager.is_split_active() {
+                        ui.separator();
+
+                        if ui.button("⬍").clicked() {
+                            self.tab_manager.create_split(SplitDirection::Horizontal);
+                        }
+                        if ui.button("⬌").clicked() {
+                            self.tab_manager.create_split(SplitDirection::Vertical);
                         }
                     }
                 });
@@ -488,6 +500,9 @@ impl eframe::App for StudyTimerApp {
 
         self.keyboard_handler.handle_input(ctx);
         self.handle_keyboard_shortcuts();
+
+        // Update weather widget
+        self.weather_widget.update();
 
         let dropped_files = self
             .file_drop_handler
