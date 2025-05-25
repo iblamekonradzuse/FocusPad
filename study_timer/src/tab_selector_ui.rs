@@ -68,16 +68,22 @@ impl TabSelectorUI {
                             .fill(colors.panel_background_color32())
                             .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
 
-                        if ui.add(button).clicked() {
+                        let response = ui.add(button);
+
+                        if response.clicked() {
                             selected_tab = Some(tab_type.clone());
                             self.hide();
                         }
 
-                        // Add tooltip with description
-                        if ui.rect_contains_pointer(ui.min_rect()) {
-                            egui::show_tooltip(ctx, egui::Id::new("tab_tooltip"), |ui| {
-                                ui.label(description);
-                            });
+                        // Add tooltip with description - fixed to check the specific button response
+                        if response.hovered() {
+                            egui::show_tooltip(
+                                ctx,
+                                egui::Id::new(format!("tab_tooltip_{:?}", tab_type)),
+                                |ui| {
+                                    ui.label(description);
+                                },
+                            );
                         }
 
                         current_column += 1;
@@ -114,12 +120,12 @@ fn get_tab_icon(tab_type: &Tab) -> &'static str {
         Tab::Record => "📝",
         Tab::Graph => "📈",
         Tab::Todo => "✅",
-        Tab::Calculator => "🧮",
+        Tab::Calculator => "🔢",
         Tab::Flashcards => "🃏",
         Tab::Markdown => "📄",
         Tab::Reminder => "🔔",
         Tab::Terminal => "💻",
-        Tab::Settings => "⚙️",
+        Tab::Settings => "⚙",
     }
 }
 
@@ -138,3 +144,4 @@ fn get_tab_description(tab_type: &Tab) -> &'static str {
         Tab::Settings => "Configure application settings",
     }
 }
+

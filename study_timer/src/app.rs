@@ -436,6 +436,10 @@ impl StudyTimerApp {
         }
     }
 
+    pub fn save_on_exit(&mut self) {
+        self.tab_manager.save_state();
+    }
+
     fn render_main_content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.tab_manager.is_split_active() {
             SplitViewUI::display(ui, self, ctx);
@@ -554,6 +558,9 @@ impl eframe::App for StudyTimerApp {
 
                 self.render_main_content(ui, ctx);
             });
+    }
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.save_on_exit();
     }
 }
 

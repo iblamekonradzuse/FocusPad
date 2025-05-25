@@ -2,6 +2,8 @@ use crate::app::Tab;
 use crate::settings::AppSettings;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -65,18 +67,90 @@ impl TabInstance {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SplitDirection {
     Horizontal,
     Vertical,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplitPane {
     pub left_tab_id: String,
     pub right_tab_id: String,
     pub direction: SplitDirection,
     pub split_ratio: f32, // 0.0 to 1.0, position of the divider
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TabManagerState {
+    pub tabs: Vec<TabInstance>,
+    pub active_tab_id: String,
+    pub split_pane: Option<SplitPane>,
+}
+
+impl Default for TabManagerState {
+    fn default() -> Self {
+        let default_tab = TabInstance::new(Tab::Timer);
+        let active_tab_id = default_tab.id.clone();
+
+        Self {
+            tabs: vec![default_tab, TabInstance::new(Tab::Settings)],
+            active_tab_id,
+            split_pane: None,
+        }
+    }
+}
+
+impl TabManagerState {
+    fn get_save_path() -> PathBuf {
+        let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+        path.push("study_timer");
+        path.push("tab_manager.json");
+        path
+    }
+
+    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let save_path = Self::get_save_path();
+
+        // Create directory if it doesn't exist
+        if let Some(parent) = save_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let json = serde_json::to_string_pretty(self)?;
+        fs::write(save_path, json)?;
+        Ok(())
+    }
+
+    pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
+        let save_path = Self::get_save_path();
+
+        if !save_path.exists() {
+            return Ok(Self::default());
+        }
+
+        let json = fs::read_to_string(save_path)?;
+        let mut state: TabManagerState = serde_json::from_str(&json)?;
+
+        // Validate that we have at least one tab and a Settings tab
+        if state.tabs.is_empty() {
+            state = Self::default();
+        } else {
+            // Ensure Settings tab exists
+            if !state.tabs.iter().any(|t| t.tab_type == Tab::Settings) {
+                state.tabs.push(TabInstance::new(Tab::Settings));
+            }
+
+            // Validate active tab exists
+            if !state.tabs.iter().any(|t| t.id == state.active_tab_id) {
+                if let Some(first_tab) = state.tabs.first() {
+                    state.active_tab_id = first_tab.id.clone();
+                }
+            }
+        }
+
+        Ok(state)
+    }
 }
 
 pub struct TabManager {
@@ -88,27 +162,48 @@ pub struct TabManager {
 
 impl TabManager {
     pub fn new(settings: &AppSettings) -> Self {
-        let mut tabs = Vec::new();
+        // Try to load saved state first
+        let state = TabManagerState::load().unwrap_or_else(|_| {
+            // If loading fails, create default state based on settings
+            let mut tabs = Vec::new();
+            let enabled_tabs = settings.get_enabled_tabs();
 
-        // Create initial tabs based on enabled settings
-        let enabled_tabs = settings.get_enabled_tabs();
-        if !enabled_tabs.is_empty() {
-            let first_tab = TabInstance::new(enabled_tabs[0].tab_type.clone());
-            tabs.push(first_tab);
-        }
+            if !enabled_tabs.is_empty() {
+                let first_tab = TabInstance::new(enabled_tabs[0].tab_type.clone());
+                tabs.push(first_tab);
+            }
 
-        // Always ensure Settings tab exists
-        if !tabs.iter().any(|t| t.tab_type == Tab::Settings) {
-            tabs.push(TabInstance::new(Tab::Settings));
-        }
+            // Always ensure Settings tab exists
+            if !tabs.iter().any(|t| t.tab_type == Tab::Settings) {
+                tabs.push(TabInstance::new(Tab::Settings));
+            }
 
-        let active_tab_id = tabs.first().map(|t| t.id.clone()).unwrap_or_default();
+            let active_tab_id = tabs.first().map(|t| t.id.clone()).unwrap_or_default();
+
+            TabManagerState {
+                tabs,
+                active_tab_id,
+                split_pane: None,
+            }
+        });
 
         Self {
-            tabs,
-            active_tab_id,
-            split_pane: None,
+            tabs: state.tabs,
+            active_tab_id: state.active_tab_id,
+            split_pane: state.split_pane,
             tab_data: HashMap::new(),
+        }
+    }
+
+    pub fn save_state(&self) {
+        let state = TabManagerState {
+            tabs: self.tabs.clone(),
+            active_tab_id: self.active_tab_id.clone(),
+            split_pane: self.split_pane.clone(),
+        };
+
+        if let Err(e) = state.save() {
+            eprintln!("Failed to save tab manager state: {}", e);
         }
     }
 
@@ -117,6 +212,7 @@ impl TabManager {
         let tab_id = new_tab.id.clone();
         self.tabs.push(new_tab);
         self.active_tab_id = tab_id.clone();
+        self.save_state();
         tab_id
     }
 
@@ -125,6 +221,7 @@ impl TabManager {
         let tab_id = new_tab.id.clone();
         self.tabs.push(new_tab);
         self.active_tab_id = tab_id.clone();
+        self.save_state();
         tab_id
     }
 
@@ -160,6 +257,7 @@ impl TabManager {
                 self.tabs.push(default_tab);
             }
 
+            self.save_state();
             true
         } else {
             false
@@ -173,6 +271,7 @@ impl TabManager {
     pub fn get_tab(&self, tab_id: &str) -> Option<&TabInstance> {
         self.tabs.iter().find(|t| t.id == tab_id)
     }
+
     #[allow(dead_code)]
     pub fn get_tab_mut(&mut self, tab_id: &str) -> Option<&mut TabInstance> {
         self.tabs.iter_mut().find(|t| t.id == tab_id)
@@ -181,6 +280,7 @@ impl TabManager {
     pub fn set_active_tab(&mut self, tab_id: &str) {
         if self.tabs.iter().any(|t| t.id == tab_id) {
             self.active_tab_id = tab_id.to_string();
+            self.save_state();
         }
     }
 
@@ -212,11 +312,14 @@ impl TabManager {
                 direction,
                 split_ratio: 0.5,
             });
+
+            self.save_state();
         }
     }
 
     pub fn close_split(&mut self) {
         self.split_pane = None;
+        self.save_state();
     }
 
     pub fn is_split_active(&self) -> bool {
@@ -226,20 +329,26 @@ impl TabManager {
     pub fn update_split_ratio(&mut self, ratio: f32) {
         if let Some(ref mut split) = self.split_pane {
             split.split_ratio = ratio.clamp(0.1, 0.9);
+            self.save_state();
         }
     }
+
     #[allow(dead_code)]
     pub fn set_tab_modified(&mut self, tab_id: &str, modified: bool) {
         if let Some(tab) = self.get_tab_mut(tab_id) {
             tab.is_modified = modified;
+            self.save_state();
         }
     }
+
     #[allow(dead_code)]
     pub fn set_tab_title(&mut self, tab_id: &str, title: String) {
         if let Some(tab) = self.get_tab_mut(tab_id) {
             tab.title = title;
+            self.save_state();
         }
     }
+
     #[allow(dead_code)]
     pub fn handle_file_drop(&mut self, file_path: String) -> Option<String> {
         // Determine tab type based on file extension
@@ -256,6 +365,7 @@ impl TabManager {
 
         Some(self.add_file_tab(tab_type, file_path))
     }
+
     #[allow(dead_code)]
     pub fn get_available_tab_types(&self, settings: &AppSettings) -> Vec<Tab> {
         settings
@@ -275,6 +385,7 @@ impl TabManager {
                     new_index
                 };
                 self.tabs.insert(insert_index.min(self.tabs.len()), tab);
+                self.save_state();
             }
         }
     }
@@ -286,6 +397,7 @@ impl TabManager {
             } else {
                 split.left_tab_id = tab_id.to_string();
             }
+            self.save_state();
             true
         } else {
             false
@@ -295,6 +407,7 @@ impl TabManager {
     pub fn swap_split_tabs(&mut self) {
         if let Some(ref mut split) = self.split_pane {
             std::mem::swap(&mut split.left_tab_id, &mut split.right_tab_id);
+            self.save_state();
         }
     }
 
@@ -314,3 +427,4 @@ impl TabManager {
         }
     }
 }
+

@@ -128,19 +128,22 @@ impl WeatherWidget {
         if self.show_city_input {
             ui.horizontal(|ui| {
                 ui.label("City:");
-                let response = ui.text_edit_singleline(&mut self.city_input_buffer);
+                let response = ui.add_sized(
+                    [ui.available_width() * 0.3, ui.spacing().interact_size.y],
+                    egui::TextEdit::singleline(&mut self.city_input_buffer),
+                );
 
                 if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     self.set_city(self.city_input_buffer.clone());
                     city_changed = true;
                 }
 
-                if ui.button("✓").clicked() {
+                if ui.button("✅ ").clicked() {
                     self.set_city(self.city_input_buffer.clone());
                     city_changed = true;
                 }
 
-                if ui.button("✗").clicked() {
+                if ui.button("❌").clicked() {
                     self.show_city_input = false;
                     self.city_input_buffer.clear();
                 }
