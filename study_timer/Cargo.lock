@@ -3279,6 +3279,7 @@ dependencies = [
  "egui",
  "egui_plot",
  "image",
+ "rand",
  "regex",
  "rfd",
  "rodio",

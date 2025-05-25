@@ -1,7 +1,6 @@
-use crate::ui::flashcard::{Card, Deck, Grade};
+use crate::ui::flashcard::Deck;
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -291,34 +290,10 @@ impl StudyData {
         }
     }
 
-    pub fn add_deck(
-        &mut self,
-        name: String,
-        description: Option<String>,
-    ) -> Result<u64, Box<dyn std::error::Error>> {
-        let deck_id = self.next_deck_id;
-        let mut deck = Deck::new(name, description);
-        deck.id = deck_id;
-        self.decks.push(deck);
-        self.next_deck_id += 1;
-        self.save()?;
-        Ok(deck_id)
-    }
-
-    pub fn get_deck(&mut self, deck_id: u64) -> Option<&mut Deck> {
-        self.decks.iter_mut().find(|d| d.id == deck_id)
-    }
-
-    pub fn delete_deck(&mut self, deck_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        self.decks.retain(|d| d.id != deck_id);
-        self.save()?;
-        Ok(())
-    }
-
     pub fn get_due_cards_count(&self) -> usize {
         self.decks
             .iter()
-            .flat_map(|deck| deck.get_due_cards())
+            .flat_map(|deck| deck.get_due_cards(true))
             .count()
     }
 }

@@ -1,6 +1,8 @@
 use crate::ui::flashcard::{ Deck, Grade};
+use rand::prelude::SliceRandom;
 use eframe::egui;
 
+#[allow(dead_code)]
 pub struct FlashcardReviewer {
     current_card_index: usize,
     show_answer: bool,
@@ -13,6 +15,15 @@ pub struct FlashcardReviewer {
     edit_card_id: Option<u64>,
     edit_card_front: String,
     edit_card_back: String,
+    review_mode: ReviewMode,
+    current_difficulty_filter: Option<Grade>,
+    weighted_cards: Vec<usize>, 
+    pub algorithm_enabled: bool, }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReviewMode {
+    All,
+    ByDifficulty(Grade),
 }
 
 impl FlashcardReviewer {
@@ -29,6 +40,10 @@ impl FlashcardReviewer {
             edit_card_id: None,
             edit_card_front: String::new(),
             edit_card_back: String::new(),
+            review_mode: ReviewMode::All,
+            current_difficulty_filter: None,
+            weighted_cards: Vec::new(),
+            algorithm_enabled: false,
         }
     }
 
@@ -48,13 +63,14 @@ impl FlashcardReviewer {
                     self.is_fullscreen = false;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(format!("Card {} of {}", self.current_card_index + 1, deck.cards.len()));
+                    let total_cards = self.get_review_cards_count(deck);
+                    ui.label(format!("Card {} of {}", self.current_card_index + 1, total_cards));
                 });
             });
 
             ui.add_space(20.0);
 
-            if let Some(card) = deck.cards.get(self.current_card_index) {
+            if let Some(card) = self.get_current_card(deck) {
                 // Question
                 ui.add_space(40.0);
                 ui.label(egui::RichText::new("Question").size(24.0).strong());
@@ -77,33 +93,36 @@ impl FlashcardReviewer {
                     ui.add_space(40.0);
 
                     // Grade buttons
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().button_padding = egui::vec2(20.0, 15.0);
-                        
-                        if ui.button(egui::RichText::new("Again").size(18.0)).clicked() {
-                            deck.cards[self.current_card_index].add_review(Grade::Again);
-                            self.next_card(deck.cards.len());
+                    ui.allocate_ui_with_layout(
+                        egui::Vec2::new(ui.available_width(), 100.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.spacing_mut().button_padding = egui::vec2(20.0, 15.0);
+                            
+                            // Add flexible space before buttons
+                            ui.allocate_space(egui::Vec2::new((ui.available_width() - 350.0) / 2.0, 0.0));
+                            
+                            if ui.button(egui::RichText::new("Again").size(18.0).color(egui::Color32::from_rgb(220, 53, 69))).clicked() {
+                                self.grade_card(deck, Grade::Again);
+                            }
+                            if ui.button(egui::RichText::new("Hard").size(18.0).color(egui::Color32::from_rgb(255, 193, 7))).clicked() {
+                                self.grade_card(deck, Grade::Hard);
+                            }
+                            if ui.button(egui::RichText::new("Good").size(18.0).color(egui::Color32::from_rgb(40, 167, 69))).clicked() {
+                                self.grade_card(deck, Grade::Good);
+                            }
+                            if ui.button(egui::RichText::new("Easy").size(18.0).color(egui::Color32::from_rgb(23, 162, 184))).clicked() {
+                                self.grade_card(deck, Grade::Easy);
+                            }
                         }
-                        if ui.button(egui::RichText::new("Hard").size(18.0)).clicked() {
-                            deck.cards[self.current_card_index].add_review(Grade::Hard);
-                            self.next_card(deck.cards.len());
-                        }
-                        if ui.button(egui::RichText::new("Good").size(18.0)).clicked() {
-                            deck.cards[self.current_card_index].add_review(Grade::Good);
-                            self.next_card(deck.cards.len());
-                        }
-                        if ui.button(egui::RichText::new("Easy").size(18.0)).clicked() {
-                            deck.cards[self.current_card_index].add_review(Grade::Easy);
-                            self.next_card(deck.cards.len());
-                        }
-                    });
+                    );
                 } else {
                     if ui.button(egui::RichText::new("Show Answer").size(20.0)).clicked() {
                         self.show_answer = true;
                     }
                 }
             } else {
-                ui.label(egui::RichText::new("No cards in this deck").size(24.0));
+                ui.label(egui::RichText::new("No cards available for review").size(24.0));
             }
         });
     }
@@ -125,10 +144,54 @@ impl FlashcardReviewer {
             }
 
             ui.separator();
+
+            // Review mode selection
+            ui.horizontal(|ui| {
+                ui.label("Review Mode:");
+                
+                if ui.selectable_label(matches!(self.review_mode, ReviewMode::All), "All Cards").clicked() {
+                    self.review_mode = ReviewMode::All;
+                    self.reset_review_session(deck);
+                }
+                
+                if ui.selectable_label(matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Again)), "Again Cards").clicked() {
+                    self.review_mode = ReviewMode::ByDifficulty(Grade::Again);
+                    self.reset_review_session(deck);
+                }
+                
+                if ui.selectable_label(matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Hard)), "Hard Cards").clicked() {
+                    self.review_mode = ReviewMode::ByDifficulty(Grade::Hard);
+                    self.reset_review_session(deck);
+                }
+                
+                if ui.selectable_label(matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Good)), "Good Cards").clicked() {
+                    self.review_mode = ReviewMode::ByDifficulty(Grade::Good);
+                    self.reset_review_session(deck);
+                }
+                
+                if ui.selectable_label(matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Easy)), "Easy Cards").clicked() {
+                    self.review_mode = ReviewMode::ByDifficulty(Grade::Easy);
+                    self.reset_review_session(deck);
+                }
+            });
+
+            ui.separator();
+
+            // Algorithm toggle
+            ui.horizontal(|ui| {
+                ui.label("Spaced Repetition:");
+                if ui.checkbox(&mut self.algorithm_enabled, "Enable algorithm").changed() {
+                    self.reset_review_session(deck);
+                }
+                ui.label("(When disabled, all cards are always available for review)");
+            });
+
+            ui.separator();
             
-            if let Some(card) = deck.cards.get(self.current_card_index) {
+            if let Some(card) = self.get_current_card(deck) {
                 // Card counter
-                ui.label(format!("Card {} of {}", self.current_card_index + 1, deck.cards.len()));
+                let total_cards = self.get_review_cards_count(deck);
+                ui.label(format!("Card {} of {}", self.current_card_index + 1, total_cards));
                 ui.add_space(10.0);
 
                 // Question
@@ -159,20 +222,16 @@ impl FlashcardReviewer {
                         ui.spacing_mut().button_padding = egui::vec2(12.0, 8.0);
                         
                         if ui.button(egui::RichText::new("Again").color(egui::Color32::from_rgb(220, 53, 69))).clicked() {
-                            deck.cards[self.current_card_index].add_review(Grade::Again);
-                            self.next_card(deck.cards.len());
+                            self.grade_card(deck, Grade::Again);
                         }
                         if ui.button(egui::RichText::new("Hard").color(egui::Color32::from_rgb(255, 193, 7))).clicked() {
-                            deck.cards[self.current_card_index].add_review(Grade::Hard);
-                            self.next_card(deck.cards.len());
+                            self.grade_card(deck, Grade::Hard);
                         }
                         if ui.button(egui::RichText::new("Good").color(egui::Color32::from_rgb(40, 167, 69))).clicked() {
-                            deck.cards[self.current_card_index].add_review(Grade::Good);
-                            self.next_card(deck.cards.len());
+                            self.grade_card(deck, Grade::Good);
                         }
                         if ui.button(egui::RichText::new("Easy").color(egui::Color32::from_rgb(23, 162, 184))).clicked() {
-                            deck.cards[self.current_card_index].add_review(Grade::Easy);
-                            self.next_card(deck.cards.len());
+                            self.grade_card(deck, Grade::Easy);
                         }
                     });
                 } else {
@@ -182,21 +241,118 @@ impl FlashcardReviewer {
                 }
             } else {
                 ui.centered_and_justified(|ui| {
-                    ui.label(egui::RichText::new("No cards in this deck").size(18.0));
+                    ui.label(egui::RichText::new("No cards available for review").size(18.0));
                 });
             }
         });
     }
 
-    fn next_card(&mut self, total_cards: usize) {
-        self.show_answer = false;
-        self.current_card_index += 1;
-        if self.current_card_index >= total_cards {
-            self.current_card_index = 0;
+    fn get_current_card<'a>(&self, deck: &'a Deck) -> Option<&'a crate::ui::flashcard::Card> {
+        match &self.review_mode {
+            ReviewMode::All => {
+                if self.weighted_cards.is_empty() {
+                    None
+                } else {
+                    let card_index = self.weighted_cards[self.current_card_index % self.weighted_cards.len()];
+                    deck.cards.get(card_index)
+                }
+            }
+             ReviewMode::ByDifficulty(grade) => {
+                let filtered_cards = deck.get_cards_by_difficulty_for_review(grade, self.algorithm_enabled);
+                filtered_cards.get(self.current_card_index)
+                    .copied() // Convert from &&Card to &Card
+            }
         }
     }
-}
 
+    fn get_current_card_mut<'a>(&mut self, deck: &'a mut Deck) -> Option<&'a mut crate::ui::flashcard::Card> {
+        match &self.review_mode {
+            ReviewMode::All => {
+                if self.weighted_cards.is_empty() {
+                    None
+                } else {
+                    let card_index = self.weighted_cards[self.current_card_index % self.weighted_cards.len()];
+                    deck.cards.get_mut(card_index)
+                }
+            }
+            ReviewMode::ByDifficulty(grade) => {
+                // For difficulty-specific review, we need to find the actual card by comparing
+                let filtered_cards = deck.get_cards_by_difficulty_for_review(grade, self.algorithm_enabled);
+                if let Some(&target_card) = filtered_cards.get(self.current_card_index) {
+                    let target_id = target_card.id;
+                    deck.cards.iter_mut().find(|c| c.id == target_id)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn get_review_cards_count(&self, deck: &Deck) -> usize {
+        match &self.review_mode {
+            ReviewMode::All => self.weighted_cards.len(),
+            ReviewMode::ByDifficulty(grade) => deck.get_cards_by_difficulty_for_review(grade, self.algorithm_enabled).len(),
+        }
+    }
+
+     fn grade_card(&mut self, deck: &mut Deck, grade: Grade) {
+        if let Some(card) = self.get_current_card_mut(deck) {
+            card.add_review(grade, self.algorithm_enabled);
+        }
+        self.next_card(deck);
+    }
+
+    fn next_card(&mut self, deck: &Deck) {
+        self.show_answer = false;
+        let total_cards = self.get_review_cards_count(deck);
+        
+        if total_cards > 0 {
+            self.current_card_index = (self.current_card_index + 1) % total_cards;
+        } else {
+            self.current_card_index = 0;
+        }
+
+        // If we're in "All" mode and completed a cycle, refresh the weighted cards
+        if matches!(self.review_mode, ReviewMode::All) && self.current_card_index == 0 {
+            self.setup_weighted_cards(deck);
+        }
+    }
+
+    fn reset_review_session(&mut self, deck: &Deck) {
+        self.current_card_index = 0;
+        self.show_answer = false;
+        
+        if matches!(self.review_mode, ReviewMode::All) {
+            self.setup_weighted_cards(deck);
+        }
+    }
+
+    fn setup_weighted_cards(&mut self, deck: &Deck) {
+        self.weighted_cards.clear();
+        
+        let due_cards = deck.get_due_cards(self.algorithm_enabled);
+        
+        for (deck_index, card) in deck.cards.iter().enumerate() {
+            // Only include due cards
+            if !due_cards.iter().any(|&due_card| due_card.id == card.id) {
+                continue;
+            }
+            
+            let weight = match card.get_difficulty() {
+                Grade::Again | Grade::Hard => 4, // High frequency for difficult cards
+                Grade::Good | Grade::Easy => 2,  // Lower frequency for easier cards
+            };
+            
+            for _ in 0..weight {
+                self.weighted_cards.push(deck_index);
+            }
+        }
+        
+        // Shuffle the weighted cards for randomness
+        let mut rng = rand::thread_rng();
+        self.weighted_cards.shuffle(&mut rng);
+    }
+}
 #[derive(Debug, Clone, PartialEq)]
 pub enum ViewMode {
     DeckList,

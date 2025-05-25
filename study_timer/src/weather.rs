@@ -30,10 +30,6 @@ impl Default for WeatherWidget {
 }
 
 impl WeatherWidget {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn should_update(&self) -> bool {
         match self.last_update {
             Some(last) => last.elapsed() >= self.update_interval,
@@ -179,7 +175,6 @@ impl WeatherWidget {
     // Save and load methods
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         use std::fs;
-        use std::path::PathBuf;
 
         let settings_dir = self.get_settings_dir()?;
         fs::create_dir_all(&settings_dir)?;

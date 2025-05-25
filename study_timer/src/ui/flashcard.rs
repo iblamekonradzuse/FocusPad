@@ -2,7 +2,7 @@ use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Grade {
     Again,
     Hard,
@@ -10,16 +10,7 @@ pub enum Grade {
     Easy,
 }
 
-impl Grade {
-    pub fn value(&self) -> u8 {
-        match self {
-            Grade::Again => 0,
-            Grade::Hard => 1,
-            Grade::Good => 2,
-            Grade::Easy => 3,
-        }
-    }
-}
+impl Grade {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Review {
@@ -27,6 +18,7 @@ pub struct Review {
     pub grade: Grade,
     pub interval: u32,
     pub ease_factor: f32,
+    pub algorithm_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,26 +54,31 @@ impl Card {
         }
     }
 
-    pub fn add_review(&mut self, grade: Grade) {
+    pub fn add_review(&mut self, grade: Grade, algorithm_enabled: bool) {
         let now = Local::now().format("%Y-%m-%d").to_string();
 
-        // Apply SM-2 algorithm
-        let (new_interval, new_ease_factor) = match grade {
-            Grade::Again => (1, (self.current_ease_factor - 0.15).max(1.3)),
-            Grade::Hard => {
-                let interval = (self.current_interval as f32 * 1.2).round() as u32;
-                (interval.max(1), (self.current_ease_factor - 0.15).max(1.3))
+        // Apply SM-2 algorithm only if enabled
+        let (new_interval, new_ease_factor) = if algorithm_enabled {
+            match grade {
+                Grade::Again => (1, (self.current_ease_factor - 0.15).max(1.3)),
+                Grade::Hard => {
+                    let interval = (self.current_interval as f32 * 1.2).round() as u32;
+                    (interval.max(1), (self.current_ease_factor - 0.15).max(1.3))
+                }
+                Grade::Good => {
+                    let interval =
+                        (self.current_interval as f32 * self.current_ease_factor).round() as u32;
+                    (interval.max(1), self.current_ease_factor)
+                }
+                Grade::Easy => {
+                    let interval = (self.current_interval as f32 * self.current_ease_factor * 1.3)
+                        .round() as u32;
+                    (interval.max(1), (self.current_ease_factor + 0.15).min(2.5))
+                }
             }
-            Grade::Good => {
-                let interval =
-                    (self.current_interval as f32 * self.current_ease_factor).round() as u32;
-                (interval.max(1), self.current_ease_factor)
-            }
-            Grade::Easy => {
-                let interval =
-                    (self.current_interval as f32 * self.current_ease_factor * 1.3).round() as u32;
-                (interval.max(1), (self.current_ease_factor + 0.15).min(2.5))
-            }
+        } else {
+            // When algorithm is disabled, keep cards immediately available
+            (0, self.current_ease_factor)
         };
 
         let review = Review {
@@ -89,17 +86,33 @@ impl Card {
             grade,
             interval: new_interval,
             ease_factor: new_ease_factor,
+            algorithm_enabled,
         };
 
         self.reviews.push(review);
         self.current_interval = new_interval;
         self.current_ease_factor = new_ease_factor;
-        self.due_date = NaiveDate::parse_from_str(&now, "%Y-%m-%d")
-            .ok()
-            .and_then(|d| d.checked_add_days(chrono::Days::new(new_interval as u64)))
-            .map(|d| d.format("%Y-%m-%d").to_string())
-            .unwrap_or(now);
+
+        // Set due date - if algorithm disabled, make it available today
+        self.due_date = if algorithm_enabled {
+            NaiveDate::parse_from_str(&now, "%Y-%m-%d")
+                .ok()
+                .and_then(|d| d.checked_add_days(chrono::Days::new(new_interval as u64)))
+                .map(|d| d.format("%Y-%m-%d").to_string())
+                .unwrap_or(now.clone())
+        } else {
+            now.clone() // Always available today when algorithm is off
+        };
+
         self.is_new = false;
+    }
+
+    pub fn get_difficulty(&self) -> Grade {
+        if self.reviews.is_empty() {
+            Grade::Again // New cards are considered "Again"
+        } else {
+            self.reviews.last().unwrap().grade.clone()
+        }
     }
 }
 
@@ -132,16 +145,32 @@ impl Deck {
         card_id
     }
 
-    pub fn get_due_cards(&self) -> Vec<&Card> {
+    pub fn get_due_cards(&self, algorithm_enabled: bool) -> Vec<&Card> {
+        if algorithm_enabled {
+            let today = Local::now().format("%Y-%m-%d").to_string();
+            self.cards
+                .iter()
+                .filter(|card| card.due_date <= today)
+                .collect()
+        } else {
+            // When algorithm is disabled, all cards are always available
+            self.cards.iter().collect()
+        }
+    }
+
+    pub fn get_cards_by_difficulty_for_review(
+        &self,
+        difficulty: &Grade,
+        algorithm_enabled: bool,
+    ) -> Vec<&Card> {
         let today = Local::now().format("%Y-%m-%d").to_string();
         self.cards
             .iter()
-            .filter(|card| card.due_date <= today)
+            .filter(|card| {
+                let is_due = if algorithm_enabled { card.due_date <= today } else { true };
+                is_due && matches!(card.get_difficulty(), d if std::mem::discriminant(&d) == std::mem::discriminant(difficulty))
+            })
             .collect()
-    }
-
-    pub fn get_card(&mut self, card_id: u64) -> Option<&mut Card> {
-        self.cards.iter_mut().find(|c| c.id == card_id)
     }
 
     fn get_next_card_id(&self) -> u64 {
