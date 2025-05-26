@@ -1,6 +1,14 @@
-use crate::ui::flashcard::{ Deck, Grade};
-use rand::prelude::SliceRandom;
+use crate::image_handler::{CardImage, ImageManager};
+use crate::ui::flashcard::{Deck, Grade};
+use arboard::Clipboard;
+use base64::Engine;
 use eframe::egui;
+use egui::TextureHandle;
+use image;
+use rand::prelude::SliceRandom;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::path::PathBuf;
 
 #[allow(dead_code)]
 pub struct FlashcardReviewer {
@@ -17,13 +25,24 @@ pub struct FlashcardReviewer {
     edit_card_back: String,
     review_mode: ReviewMode,
     current_difficulty_filter: Option<Grade>,
-    weighted_cards: Vec<usize>, 
-    pub algorithm_enabled: bool, }
+    weighted_cards: Vec<usize>,
+    pub show_image_dialog: bool,
+    pub pending_image_side: Option<ImageSide>, // Front or Back
+    pub selected_image_path: Option<PathBuf>,
+    pub algorithm_enabled: bool,
+    texture_cache: HashMap<u64, TextureHandle>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReviewMode {
     All,
     ByDifficulty(Grade),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImageSide {
+    Front,
+    Back,
 }
 
 impl FlashcardReviewer {
@@ -44,6 +63,10 @@ impl FlashcardReviewer {
             current_difficulty_filter: None,
             weighted_cards: Vec::new(),
             algorithm_enabled: false,
+            show_image_dialog: false,
+            pending_image_side: None,
+            selected_image_path: None,
+            texture_cache: HashMap::new(),
         }
     }
 
@@ -64,20 +87,42 @@ impl FlashcardReviewer {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let total_cards = self.get_review_cards_count(deck);
-                    ui.label(format!("Card {} of {}", self.current_card_index + 1, total_cards));
+                    ui.label(format!(
+                        "Card {} of {}",
+                        self.current_card_index + 1,
+                        total_cards
+                    ));
                 });
             });
 
             ui.add_space(20.0);
 
-            if let Some(card) = self.get_current_card(deck) {
+            // Get card data first, then drop the borrow
+            let card_data = if let Some(card) = self.get_current_card(deck) {
+                Some((
+                    card.front.clone(),
+                    card.back.clone(),
+                    card.front_image.clone(),
+                    card.back_image.clone(),
+                ))
+            } else {
+                None
+            };
+
+            if let Some((card_front, card_back, front_image, back_image)) = card_data {
                 // Question
                 ui.add_space(40.0);
                 ui.label(egui::RichText::new("Question").size(24.0).strong());
                 ui.add_space(20.0);
-                
+
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new(&card.front).size(32.0));
+                    ui.label(egui::RichText::new(&card_front).size(32.0));
+
+                    // Display front image if available
+                    if let Some(front_image) = &front_image {
+                        ui.add_space(10.0);
+                        self.display_image(ui, front_image, [400.0, 300.0]);
+                    }
                 });
 
                 ui.add_space(40.0);
@@ -85,39 +130,80 @@ impl FlashcardReviewer {
                 if self.show_answer {
                     ui.label(egui::RichText::new("Answer").size(24.0).strong());
                     ui.add_space(20.0);
-                    
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new(&card.back).size(32.0));
-                    });
 
-                    ui.add_space(40.0);
-
-                    // Grade buttons
+                    // Grade buttons FIRST
                     ui.allocate_ui_with_layout(
                         egui::Vec2::new(ui.available_width(), 100.0),
                         egui::Layout::left_to_right(egui::Align::Center),
                         |ui| {
                             ui.spacing_mut().button_padding = egui::vec2(20.0, 15.0);
-                            
+
                             // Add flexible space before buttons
-                            ui.allocate_space(egui::Vec2::new((ui.available_width() - 350.0) / 2.0, 0.0));
-                            
-                            if ui.button(egui::RichText::new("Again").size(18.0).color(egui::Color32::from_rgb(220, 53, 69))).clicked() {
+                            ui.allocate_space(egui::Vec2::new(
+                                (ui.available_width() - 350.0) / 2.0,
+                                0.0,
+                            ));
+
+                            if ui
+                                .button(
+                                    egui::RichText::new("Again")
+                                        .size(18.0)
+                                        .color(egui::Color32::from_rgb(220, 53, 69)),
+                                )
+                                .clicked()
+                            {
                                 self.grade_card(deck, Grade::Again);
                             }
-                            if ui.button(egui::RichText::new("Hard").size(18.0).color(egui::Color32::from_rgb(255, 193, 7))).clicked() {
+                            if ui
+                                .button(
+                                    egui::RichText::new("Hard")
+                                        .size(18.0)
+                                        .color(egui::Color32::from_rgb(255, 193, 7)),
+                                )
+                                .clicked()
+                            {
                                 self.grade_card(deck, Grade::Hard);
                             }
-                            if ui.button(egui::RichText::new("Good").size(18.0).color(egui::Color32::from_rgb(40, 167, 69))).clicked() {
+                            if ui
+                                .button(
+                                    egui::RichText::new("Good")
+                                        .size(18.0)
+                                        .color(egui::Color32::from_rgb(40, 167, 69)),
+                                )
+                                .clicked()
+                            {
                                 self.grade_card(deck, Grade::Good);
                             }
-                            if ui.button(egui::RichText::new("Easy").size(18.0).color(egui::Color32::from_rgb(23, 162, 184))).clicked() {
+                            if ui
+                                .button(
+                                    egui::RichText::new("Easy")
+                                        .size(18.0)
+                                        .color(egui::Color32::from_rgb(23, 162, 184)),
+                                )
+                                .clicked()
+                            {
                                 self.grade_card(deck, Grade::Easy);
                             }
-                        }
+                        },
                     );
+
+                    ui.add_space(20.0);
+
+                    // THEN the answer content
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                        ui.label(egui::RichText::new(&card_back).size(32.0));
+
+                        // Display back image if available
+                        if let Some(back_image) = &back_image {
+                            ui.add_space(10.0);
+                            self.display_image(ui, back_image, [400.0, 300.0]);
+                        }
+                    });
                 } else {
-                    if ui.button(egui::RichText::new("Show Answer").size(20.0)).clicked() {
+                    if ui
+                        .button(egui::RichText::new("Show Answer").size(20.0))
+                        .clicked()
+                    {
                         self.show_answer = true;
                     }
                 }
@@ -148,28 +234,55 @@ impl FlashcardReviewer {
             // Review mode selection
             ui.horizontal(|ui| {
                 ui.label("Review Mode:");
-                
-                if ui.selectable_label(matches!(self.review_mode, ReviewMode::All), "All Cards").clicked() {
+
+                if ui
+                    .selectable_label(matches!(self.review_mode, ReviewMode::All), "All Cards")
+                    .clicked()
+                {
                     self.review_mode = ReviewMode::All;
                     self.reset_review_session(deck);
                 }
-                
-                if ui.selectable_label(matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Again)), "Again Cards").clicked() {
+
+                if ui
+                    .selectable_label(
+                        matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Again)),
+                        "Again Cards",
+                    )
+                    .clicked()
+                {
                     self.review_mode = ReviewMode::ByDifficulty(Grade::Again);
                     self.reset_review_session(deck);
                 }
-                
-                if ui.selectable_label(matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Hard)), "Hard Cards").clicked() {
+
+                if ui
+                    .selectable_label(
+                        matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Hard)),
+                        "Hard Cards",
+                    )
+                    .clicked()
+                {
                     self.review_mode = ReviewMode::ByDifficulty(Grade::Hard);
                     self.reset_review_session(deck);
                 }
-                
-                if ui.selectable_label(matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Good)), "Good Cards").clicked() {
+
+                if ui
+                    .selectable_label(
+                        matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Good)),
+                        "Good Cards",
+                    )
+                    .clicked()
+                {
                     self.review_mode = ReviewMode::ByDifficulty(Grade::Good);
                     self.reset_review_session(deck);
                 }
-                
-                if ui.selectable_label(matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Easy)), "Easy Cards").clicked() {
+
+                if ui
+                    .selectable_label(
+                        matches!(self.review_mode, ReviewMode::ByDifficulty(Grade::Easy)),
+                        "Easy Cards",
+                    )
+                    .clicked()
+                {
                     self.review_mode = ReviewMode::ByDifficulty(Grade::Easy);
                     self.reset_review_session(deck);
                 }
@@ -180,18 +293,25 @@ impl FlashcardReviewer {
             // Algorithm toggle
             ui.horizontal(|ui| {
                 ui.label("Spaced Repetition:");
-                if ui.checkbox(&mut self.algorithm_enabled, "Enable algorithm").changed() {
+                if ui
+                    .checkbox(&mut self.algorithm_enabled, "Enable algorithm")
+                    .changed()
+                {
                     self.reset_review_session(deck);
                 }
                 ui.label("(When disabled, all cards are always available for review)");
             });
 
             ui.separator();
-            
+
             if let Some(card) = self.get_current_card(deck) {
                 // Card counter
                 let total_cards = self.get_review_cards_count(deck);
-                ui.label(format!("Card {} of {}", self.current_card_index + 1, total_cards));
+                ui.label(format!(
+                    "Card {} of {}",
+                    self.current_card_index + 1,
+                    total_cards
+                ));
                 ui.add_space(10.0);
 
                 // Question
@@ -200,9 +320,15 @@ impl FlashcardReviewer {
                         ui.label(egui::RichText::new("Question:").size(16.0).strong());
                         ui.add_space(5.0);
                         ui.label(egui::RichText::new(&card.front).size(14.0));
+
+                        // Display front image if available
+                        if let Some(front_image) = &card.front_image {
+                            ui.add_space(10.0);
+                            self.display_image(ui, front_image, [400.0, 300.0]);
+                        }
                     });
                 });
-                
+
                 ui.add_space(10.0);
 
                 if self.show_answer {
@@ -212,30 +338,63 @@ impl FlashcardReviewer {
                             ui.label(egui::RichText::new("Answer:").size(16.0).strong());
                             ui.add_space(5.0);
                             ui.label(egui::RichText::new(&card.back).size(14.0));
+
+                            // Display back image if available
+                            if let Some(back_image) = &card.back_image {
+                                ui.add_space(10.0);
+                                self.display_image(ui, back_image, [400.0, 300.0]);
+                            }
                         });
                     });
 
                     ui.add_space(15.0);
-                    
+
                     // Grade buttons
                     ui.horizontal(|ui| {
                         ui.spacing_mut().button_padding = egui::vec2(12.0, 8.0);
-                        
-                        if ui.button(egui::RichText::new("Again").color(egui::Color32::from_rgb(220, 53, 69))).clicked() {
+
+                        if ui
+                            .button(
+                                egui::RichText::new("Again")
+                                    .color(egui::Color32::from_rgb(220, 53, 69)),
+                            )
+                            .clicked()
+                        {
                             self.grade_card(deck, Grade::Again);
                         }
-                        if ui.button(egui::RichText::new("Hard").color(egui::Color32::from_rgb(255, 193, 7))).clicked() {
+                        if ui
+                            .button(
+                                egui::RichText::new("Hard")
+                                    .color(egui::Color32::from_rgb(255, 193, 7)),
+                            )
+                            .clicked()
+                        {
                             self.grade_card(deck, Grade::Hard);
                         }
-                        if ui.button(egui::RichText::new("Good").color(egui::Color32::from_rgb(40, 167, 69))).clicked() {
+                        if ui
+                            .button(
+                                egui::RichText::new("Good")
+                                    .color(egui::Color32::from_rgb(40, 167, 69)),
+                            )
+                            .clicked()
+                        {
                             self.grade_card(deck, Grade::Good);
                         }
-                        if ui.button(egui::RichText::new("Easy").color(egui::Color32::from_rgb(23, 162, 184))).clicked() {
+                        if ui
+                            .button(
+                                egui::RichText::new("Easy")
+                                    .color(egui::Color32::from_rgb(23, 162, 184)),
+                            )
+                            .clicked()
+                        {
                             self.grade_card(deck, Grade::Easy);
                         }
                     });
                 } else {
-                    if ui.button(egui::RichText::new("Show Answer").size(16.0)).clicked() {
+                    if ui
+                        .button(egui::RichText::new("Show Answer").size(16.0))
+                        .clicked()
+                    {
                         self.show_answer = true;
                     }
                 }
@@ -247,37 +406,151 @@ impl FlashcardReviewer {
         });
     }
 
+    fn display_image(&mut self, ui: &mut egui::Ui, card_image: &CardImage, max_size: [f32; 2]) {
+        // Check if texture already exists in cache
+        let cache_key = format!("{}_{}", card_image.id, card_image.data.len());
+        if let Some(texture_handle) =
+            self.texture_cache
+                .get(&cache_key.parse::<u64>().unwrap_or_else(|_| {
+                    use std::collections::hash_map::DefaultHasher;
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = DefaultHasher::new();
+                    cache_key.hash(&mut hasher);
+                    hasher.finish()
+                }))
+        {
+            // Use cached texture - calculate display size
+            let texture_size = texture_handle.size_vec2();
+            let aspect_ratio = texture_size.x / texture_size.y;
+            let mut display_width = max_size[0];
+            let mut display_height = max_size[1];
+
+            if aspect_ratio > max_size[0] / max_size[1] {
+                display_height = display_width / aspect_ratio;
+            } else {
+                display_width = display_height * aspect_ratio;
+            }
+
+            ui.add(
+                egui::Image::from_texture(texture_handle)
+                    .fit_to_exact_size(egui::Vec2::new(display_width, display_height)),
+            );
+            return;
+        }
+
+        // Only decode and load image if not in cache
+        match base64::engine::general_purpose::STANDARD.decode(&card_image.data) {
+            Ok(image_data) => {
+                match image::load_from_memory(&image_data) {
+                    Ok(dynamic_image) => {
+                        let rgba_image = dynamic_image.to_rgba8();
+                        let size = [rgba_image.width() as usize, rgba_image.height() as usize];
+                        let pixels = rgba_image.as_flat_samples();
+
+                        let color_image =
+                            egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+
+                        let texture_handle = ui.ctx().load_texture(
+                            format!("card_image_{}_{}", card_image.id, card_image.data.len()),
+                            color_image,
+                            egui::TextureOptions::default(),
+                        );
+
+                        // Calculate aspect ratio to maintain proportions
+                        let aspect_ratio = size[0] as f32 / size[1] as f32;
+                        let mut display_width = max_size[0];
+                        let mut display_height = max_size[1];
+
+                        if aspect_ratio > max_size[0] / max_size[1] {
+                            display_height = display_width / aspect_ratio;
+                        } else {
+                            display_width = display_height * aspect_ratio;
+                        }
+
+                        ui.add(
+                            egui::Image::from_texture(&texture_handle)
+                                .fit_to_exact_size(egui::Vec2::new(display_width, display_height)),
+                        );
+
+                        // Cache the texture for future use
+                        let cache_key = format!("{}_{}", card_image.id, card_image.data.len());
+                        let cache_key_hash = cache_key.parse::<u64>().unwrap_or_else(|_| {
+                            use std::collections::hash_map::DefaultHasher;
+                            use std::hash::{Hash, Hasher};
+                            let mut hasher = DefaultHasher::new();
+                            cache_key.hash(&mut hasher);
+                            hasher.finish()
+                        });
+                        self.texture_cache.insert(cache_key_hash, texture_handle);
+                    }
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::RED,
+                            format!("Failed to load image: {}", e),
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::RED,
+                    format!("Failed to decode base64: {}", e),
+                );
+            }
+        }
+    }
+
+    pub fn clear_texture_cache(&mut self) {
+        self.texture_cache.clear();
+    }
+
+    pub fn remove_card_textures(&mut self, _card_id: u64) {
+        // Remove textures associated with the deleted card
+        self.texture_cache.retain(|&_id, _| {
+            // Keep textures that don't belong to the deleted card
+            // This is a simple approach - i might need to track image IDs more precisely
+            true // For now, keep all textures as i don't have direct card->image mapping
+                 // maybe in the future, but i am just burnt out with image rendering rn.
+        });
+    }
+
     fn get_current_card<'a>(&self, deck: &'a Deck) -> Option<&'a crate::ui::flashcard::Card> {
         match &self.review_mode {
             ReviewMode::All => {
                 if self.weighted_cards.is_empty() {
                     None
                 } else {
-                    let card_index = self.weighted_cards[self.current_card_index % self.weighted_cards.len()];
+                    let card_index =
+                        self.weighted_cards[self.current_card_index % self.weighted_cards.len()];
                     deck.cards.get(card_index)
                 }
             }
-             ReviewMode::ByDifficulty(grade) => {
-                let filtered_cards = deck.get_cards_by_difficulty_for_review(grade, self.algorithm_enabled);
-                filtered_cards.get(self.current_card_index)
-                    .copied() // Convert from &&Card to &Card
+            ReviewMode::ByDifficulty(grade) => {
+                let filtered_cards =
+                    deck.get_cards_by_difficulty_for_review(grade, self.algorithm_enabled);
+                filtered_cards.get(self.current_card_index).copied() // Convert from &&Card to &Card
             }
         }
     }
 
-    fn get_current_card_mut<'a>(&mut self, deck: &'a mut Deck) -> Option<&'a mut crate::ui::flashcard::Card> {
+    fn get_current_card_mut<'a>(
+        &mut self,
+        deck: &'a mut Deck,
+    ) -> Option<&'a mut crate::ui::flashcard::Card> {
         match &self.review_mode {
             ReviewMode::All => {
                 if self.weighted_cards.is_empty() {
                     None
                 } else {
-                    let card_index = self.weighted_cards[self.current_card_index % self.weighted_cards.len()];
+                    let card_index =
+                        self.weighted_cards[self.current_card_index % self.weighted_cards.len()];
                     deck.cards.get_mut(card_index)
                 }
             }
             ReviewMode::ByDifficulty(grade) => {
                 // For difficulty-specific review, we need to find the actual card by comparing
-                let filtered_cards = deck.get_cards_by_difficulty_for_review(grade, self.algorithm_enabled);
+                let filtered_cards =
+                    deck.get_cards_by_difficulty_for_review(grade, self.algorithm_enabled);
                 if let Some(&target_card) = filtered_cards.get(self.current_card_index) {
                     let target_id = target_card.id;
                     deck.cards.iter_mut().find(|c| c.id == target_id)
@@ -291,11 +564,13 @@ impl FlashcardReviewer {
     fn get_review_cards_count(&self, deck: &Deck) -> usize {
         match &self.review_mode {
             ReviewMode::All => self.weighted_cards.len(),
-            ReviewMode::ByDifficulty(grade) => deck.get_cards_by_difficulty_for_review(grade, self.algorithm_enabled).len(),
+            ReviewMode::ByDifficulty(grade) => deck
+                .get_cards_by_difficulty_for_review(grade, self.algorithm_enabled)
+                .len(),
         }
     }
 
-     fn grade_card(&mut self, deck: &mut Deck, grade: Grade) {
+    fn grade_card(&mut self, deck: &mut Deck, grade: Grade) {
         if let Some(card) = self.get_current_card_mut(deck) {
             card.add_review(grade, self.algorithm_enabled);
         }
@@ -305,7 +580,7 @@ impl FlashcardReviewer {
     fn next_card(&mut self, deck: &Deck) {
         self.show_answer = false;
         let total_cards = self.get_review_cards_count(deck);
-        
+
         if total_cards > 0 {
             self.current_card_index = (self.current_card_index + 1) % total_cards;
         } else {
@@ -321,7 +596,7 @@ impl FlashcardReviewer {
     fn reset_review_session(&mut self, deck: &Deck) {
         self.current_card_index = 0;
         self.show_answer = false;
-        
+
         if matches!(self.review_mode, ReviewMode::All) {
             self.setup_weighted_cards(deck);
         }
@@ -329,30 +604,31 @@ impl FlashcardReviewer {
 
     fn setup_weighted_cards(&mut self, deck: &Deck) {
         self.weighted_cards.clear();
-        
+
         let due_cards = deck.get_due_cards(self.algorithm_enabled);
-        
+
         for (deck_index, card) in deck.cards.iter().enumerate() {
             // Only include due cards
             if !due_cards.iter().any(|&due_card| due_card.id == card.id) {
                 continue;
             }
-            
+
             let weight = match card.get_difficulty() {
                 Grade::Again | Grade::Hard => 4, // High frequency for difficult cards
                 Grade::Good | Grade::Easy => 2,  // Lower frequency for easier cards
             };
-            
+
             for _ in 0..weight {
                 self.weighted_cards.push(deck_index);
             }
         }
-        
+
         // Shuffle the weighted cards for randomness
         let mut rng = rand::thread_rng();
         self.weighted_cards.shuffle(&mut rng);
     }
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ViewMode {
     DeckList,
@@ -373,7 +649,12 @@ pub struct DeckManagerUI {
     pub edit_card_front: String,
     pub edit_card_back: String,
     pub delete_confirmation: Option<String>, // Holds the type of item being deleted ("deck" or "card")
-    pub item_to_delete: Option<u64>, // ID of item to delete
+    pub item_to_delete: Option<u64>,         // ID of item to deleted
+    pub show_image_dialog: bool,
+    pub pending_image_side: Option<ImageSide>,
+    pub pending_card_id: Option<u64>,
+    pub pending_front_image: Option<CardImage>,
+    pub pending_back_image: Option<CardImage>,
 }
 
 impl DeckManagerUI {
@@ -393,6 +674,11 @@ impl DeckManagerUI {
             edit_card_back: String::new(),
             delete_confirmation: None,
             item_to_delete: None,
+            show_image_dialog: false,
+            pending_image_side: None,
+            pending_card_id: None,
+            pending_front_image: None,
+            pending_back_image: None,
         }
     }
 
@@ -414,7 +700,10 @@ impl DeckManagerUI {
                 .collapsible(false)
                 .resizable(false)
                 .show(ui.ctx(), |ui| {
-                    ui.label(format!("Are you sure you want to delete this {}?", delete_type));
+                    ui.label(format!(
+                        "Are you sure you want to delete this {}?",
+                        delete_type
+                    ));
                     ui.separator();
                     ui.horizontal(|ui| {
                         if ui.button("Delete").clicked() {
@@ -428,7 +717,9 @@ impl DeckManagerUI {
                                     needs_save = true;
                                 }
                             } else if delete_type == "card" {
-                                if let (Some(deck_id), Some(card_id)) = (self.selected_deck_id, self.item_to_delete) {
+                                if let (Some(deck_id), Some(card_id)) =
+                                    (self.selected_deck_id, self.item_to_delete)
+                                {
                                     if let Some(deck) = decks.iter_mut().find(|d| d.id == deck_id) {
                                         deck.cards.retain(|c| c.id != card_id);
                                         needs_save = true;
@@ -446,6 +737,41 @@ impl DeckManagerUI {
                 });
         }
 
+        // Handle image dialog
+        if self.show_image_dialog {
+            egui::Window::new("Add Image")
+                .collapsible(false)
+                .resizable(false)
+                .show(ui.ctx(), |ui| {
+                    ui.label("Add image from:");
+                    ui.separator();
+
+                    // Browse files button
+                    if ui.button("📁 Browse Files").clicked() {
+                        if let Some(path) = crate::image_handler::open_file_dialog() {
+                            self.handle_image_addition(decks, path, &mut needs_save);
+                        }
+                    }
+
+                    ui.add_space(10.0);
+
+                    // Paste from clipboard button
+                    if ui.button("📋 Paste from Clipboard (Ctrl+V)").clicked() {
+                        self.handle_clipboard_paste(decks, &mut needs_save);
+                    }
+
+                    ui.add_space(5.0);
+                    ui.label("💡 Take a screenshot and paste it here!");
+
+                    ui.separator();
+                    if ui.button("Cancel").clicked() {
+                        self.show_image_dialog = false;
+                        self.pending_image_side = None;
+                        self.pending_card_id = None;
+                    }
+                });
+        }
+
         needs_save
     }
 
@@ -457,7 +783,7 @@ impl DeckManagerUI {
 
         // Deck list
         ui.spacing_mut().item_spacing.y = 8.0;
-        
+
         for deck in decks.iter() {
             ui.horizontal(|ui| {
                 // Deck info
@@ -466,25 +792,26 @@ impl DeckManagerUI {
                         ui.vertical(|ui| {
                             ui.label(egui::RichText::new(&deck.name).size(16.0).strong());
                             if let Some(desc) = &deck.description {
-                                ui.label(egui::RichText::new(desc).size(12.0).weak());
+                                ui.label(desc);
                             }
-                            ui.label(format!("{} cards", deck.cards.len()));
+                            ui.label(format!("Cards: {}", deck.cards.len()));
                         });
-                        
+
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             // Delete deck button
                             if ui.button("🗑").clicked() {
                                 self.delete_confirmation = Some("deck".to_string());
                                 self.item_to_delete = Some(deck.id);
                             }
-                            
+
                             // Edit deck button
                             if ui.button("✏").clicked() {
                                 self.edit_deck_id = Some(deck.id);
                                 self.edit_deck_name = deck.name.clone();
-                                self.edit_deck_description = deck.description.clone().unwrap_or_default();
+                                self.edit_deck_description =
+                                    deck.description.clone().unwrap_or_default();
                             }
-                            
+
                             // Select deck button
                             if ui.button("Open").clicked() {
                                 self.selected_deck_id = Some(deck.id);
@@ -505,12 +832,17 @@ impl DeckManagerUI {
 
         ui.horizontal(|ui| {
             ui.label("Name:");
-            ui.add(egui::TextEdit::singleline(&mut self.new_deck_name).hint_text("Enter deck name"));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.new_deck_name).hint_text("Enter deck name"),
+            );
         });
 
         ui.horizontal(|ui| {
             ui.label("Description:");
-            ui.add(egui::TextEdit::singleline(&mut self.new_deck_description).hint_text("Optional description"));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.new_deck_description)
+                    .hint_text("Optional description"),
+            );
         });
 
         ui.add_space(10.0);
@@ -530,7 +862,6 @@ impl DeckManagerUI {
             self.new_deck_description.clear();
             needs_save = true;
         }
-
         // Edit deck dialog
         if let Some(edit_id) = self.edit_deck_id {
             egui::Window::new("Edit Deck")
@@ -595,7 +926,7 @@ impl DeckManagerUI {
 
                 egui::TopBottomPanel::top("add_card_section").show_inside(ui, |ui| {
                     ui.separator();
-                    
+
                     // Add new card section
                     ui.heading("➕ Add New Card");
                     ui.add_space(5.0);
@@ -603,8 +934,24 @@ impl DeckManagerUI {
                     ui.label("Front (Question):");
                     ui.add(egui::TextEdit::multiline(&mut self.new_card_front).desired_rows(3));
 
+                    ui.horizontal(|ui| {
+                        if ui.button("📷 Add Image to Front").clicked() {
+                            self.show_image_dialog = true;
+                            self.pending_image_side = Some(ImageSide::Front);
+                            self.pending_card_id = None; // For new cards
+                        }
+                    });
+
                     ui.label("Back (Answer):");
                     ui.add(egui::TextEdit::multiline(&mut self.new_card_back).desired_rows(3));
+
+                    ui.horizontal(|ui| {
+                        if ui.button("📷 Add Image to Back").clicked() {
+                            self.show_image_dialog = true;
+                            self.pending_image_side = Some(ImageSide::Back);
+                            self.pending_card_id = None; // For new cards
+                        }
+                    });
 
                     ui.add_space(10.0);
 
@@ -612,12 +959,25 @@ impl DeckManagerUI {
                         && !self.new_card_front.is_empty()
                         && !self.new_card_back.is_empty()
                     {
-                        deck.add_card(self.new_card_front.clone(), self.new_card_back.clone());
+                        let mut new_card = crate::ui::flashcard::Card::new(
+                            deck.id,
+                            self.new_card_front.clone(),
+                            self.new_card_back.clone(),
+                        );
+
+                        // Add pending images if they exist
+                        if let Some(front_image) = self.pending_front_image.take() {
+                            new_card.front_image = Some(front_image);
+                        }
+                        if let Some(back_image) = self.pending_back_image.take() {
+                            new_card.back_image = Some(back_image);
+                        }
+
+                        deck.cards.push(new_card);
                         self.new_card_front.clear();
                         self.new_card_back.clear();
                         needs_save = true;
                     }
-
                     ui.add_space(10.0);
                     ui.separator();
                 });
@@ -647,20 +1007,24 @@ impl DeckManagerUI {
                                                 ui.label(&card.back);
                                             });
 
-                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                                // Delete card button
-                                                if ui.button("🗑").clicked() {
-                                                    self.delete_confirmation = Some("card".to_string());
-                                                    self.item_to_delete = Some(card.id);
-                                                }
-                                                
-                                                // Edit card button
-                                                if ui.button("✏").clicked() {
-                                                    self.edit_card_id = Some(card.id);
-                                                    self.edit_card_front = card.front.clone();
-                                                    self.edit_card_back = card.back.clone();
-                                                }
-                                            });
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Min),
+                                                |ui| {
+                                                    // Delete card button
+                                                    if ui.button("🗑").clicked() {
+                                                        self.delete_confirmation =
+                                                            Some("card".to_string());
+                                                        self.item_to_delete = Some(card.id);
+                                                    }
+
+                                                    // Edit card button
+                                                    if ui.button("✏").clicked() {
+                                                        self.edit_card_id = Some(card.id);
+                                                        self.edit_card_front = card.front.clone();
+                                                        self.edit_card_back = card.back.clone();
+                                                    }
+                                                },
+                                            );
                                         });
                                     });
                                     ui.add_space(8.0);
@@ -689,7 +1053,9 @@ impl DeckManagerUI {
                         if ui.button("Save").clicked() {
                             if let Some(deck_id) = self.selected_deck_id {
                                 if let Some(deck) = decks.iter_mut().find(|d| d.id == deck_id) {
-                                    if let Some(card) = deck.cards.iter_mut().find(|c| c.id == edit_id) {
+                                    if let Some(card) =
+                                        deck.cards.iter_mut().find(|c| c.id == edit_id)
+                                    {
                                         card.front = self.edit_card_front.clone();
                                         card.back = self.edit_card_back.clone();
                                         needs_save = true;
@@ -714,5 +1080,118 @@ impl DeckManagerUI {
         } else {
             1
         }
+    }
+
+    fn handle_image_addition(
+        &mut self,
+        decks: &mut Vec<Deck>,
+        path: PathBuf,
+        needs_save: &mut bool,
+    ) {
+        let image_manager = ImageManager::new();
+
+        match image_manager.add_image_from_file(&path) {
+            Ok(card_image) => {
+                self.apply_image_to_card(decks, card_image, needs_save);
+            }
+            Err(e) => {
+                eprintln!("Error loading image: {}", e);
+            }
+        }
+    }
+
+    fn handle_clipboard_paste(&mut self, decks: &mut Vec<Deck>, needs_save: &mut bool) {
+        match Clipboard::new() {
+            Ok(mut clipboard) => {
+                match clipboard.get_image() {
+                    Ok(img_data) => {
+                        // Convert clipboard image to CardImage
+                        match self.clipboard_image_to_card_image(img_data) {
+                            Ok(card_image) => {
+                                self.apply_image_to_card(decks, card_image, needs_save);
+                            }
+                            Err(e) => {
+                                eprintln!("Error processing clipboard image: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("No image found in clipboard or error: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to access clipboard: {}", e);
+            }
+        }
+    }
+
+    fn clipboard_image_to_card_image(
+        &self,
+        img_data: arboard::ImageData,
+    ) -> Result<CardImage, Box<dyn std::error::Error>> {
+        // Convert RGBA data to image format
+        let image = image::RgbaImage::from_raw(
+            img_data.width as u32,
+            img_data.height as u32,
+            img_data.bytes.into_owned(),
+        )
+        .ok_or("Failed to create image from clipboard data")?;
+
+        // Convert to PNG format
+        let mut png_data = Vec::new();
+        image.write_to(
+            &mut std::io::Cursor::new(&mut png_data),
+            image::ImageFormat::Png,
+        )?;
+
+        // Encode to base64
+        let base64_data = base64::engine::general_purpose::STANDARD.encode(&png_data);
+
+        // Generate unique ID
+        let id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64;
+
+        Ok(CardImage {
+            id: id.to_string(),
+            data: base64_data,
+            filename: "clipboard_image.png".to_string(),
+            mime_type: "image/png".to_string(),
+            size: png_data.len(),
+        })
+    }
+
+    fn apply_image_to_card(
+        &mut self,
+        decks: &mut Vec<Deck>,
+        card_image: CardImage,
+        needs_save: &mut bool,
+    ) {
+        if let Some(deck_id) = self.selected_deck_id {
+            if let Some(deck) = decks.iter_mut().find(|d| d.id == deck_id) {
+                if let Some(card_id) = self.pending_card_id {
+                    // Adding to existing card
+                    if let Some(card) = deck.cards.iter_mut().find(|c| c.id == card_id) {
+                        match self.pending_image_side.as_ref().unwrap() {
+                            ImageSide::Front => card.front_image = Some(card_image),
+                            ImageSide::Back => card.back_image = Some(card_image),
+                        }
+                        *needs_save = true;
+                    }
+                } else {
+                    // Adding to new card being created
+                    match self.pending_image_side.as_ref().unwrap() {
+                        ImageSide::Front => self.pending_front_image = Some(card_image),
+                        ImageSide::Back => self.pending_back_image = Some(card_image),
+                    }
+                }
+            }
+        }
+
+        self.show_image_dialog = false;
+        self.pending_image_side = None;
+        self.pending_card_id = None;
     }
 }

@@ -2,6 +2,7 @@ mod app;
 mod data;
 mod debug;
 mod file_drop_handler;
+mod image_handler;
 mod keyboard_handler;
 mod settings;
 mod split_view_ui;
@@ -11,6 +12,7 @@ mod terminal;
 mod timer;
 mod ui;
 mod weather;
+
 use app::StudyTimerApp;
 
 fn main() -> Result<(), eframe::Error> {

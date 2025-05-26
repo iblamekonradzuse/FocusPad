@@ -1,3 +1,4 @@
+use crate::image_handler::CardImage;
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -28,6 +29,8 @@ pub struct Card {
     pub front: String,
     pub back: String,
     pub tags: HashSet<String>,
+    pub front_image: Option<CardImage>,
+    pub back_image: Option<CardImage>,
     pub created_at: String, // ISO date format
     pub reviews: Vec<Review>,
     pub current_interval: u32,
@@ -44,6 +47,8 @@ impl Card {
             deck_id,
             front,
             back,
+            front_image: None,
+            back_image: None,
             tags: HashSet::new(),
             created_at: now.clone(),
             reviews: Vec::new(),

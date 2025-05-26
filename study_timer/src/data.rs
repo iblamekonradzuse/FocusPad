@@ -1,3 +1,4 @@
+use crate::image_handler::ImageManager;
 use crate::ui::flashcard::Deck;
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,7 @@ pub struct StudyData {
     pub reminders: Vec<Reminder>,
     pub decks: Vec<Deck>,
     pub next_deck_id: u64,
+    pub image_manager: ImageManager,
 }
 
 impl StudyData {
@@ -57,6 +59,7 @@ impl StudyData {
                 todos: Vec::new(),
                 reminders: Vec::new(),
                 decks: Vec::new(),
+                image_manager: ImageManager::new(),
                 next_deck_id: 1,
             });
         }
