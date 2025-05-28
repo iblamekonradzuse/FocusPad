@@ -48,34 +48,86 @@ fn display_single_view(ui: &mut egui::Ui, app: &mut StudyTimerApp) {
         }
         crate::ui::flashcard_ui::ViewMode::DeckView => {
             // Show deck view with review panel
-            ui.horizontal(|ui| {
-                // Review panel (left side)
-                if let Some(deck_id) = app.deck_manager_ui.selected_deck_id {
-                    if let Some(deck) = app.study_data.decks.iter_mut().find(|d| d.id == deck_id) {
-                        egui::SidePanel::left("review_panel")
-                            .resizable(true)
-                            .default_width(350.0)
-                            .min_width(300.0)
-                            .show_inside(ui, |ui| {
-                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                                    ui.heading("📖 Study Mode");
-                                    ui.separator();
-                                    app.flashcard_reviewer.display(ui, deck);
-                                });
-                            });
-                    }
-                }
+            if app.deck_manager_ui.right_panel_open {
+                // Split view when right panel is open
+                ui.horizontal(|ui| {
+                    // Review panel (left side)
+                    if let Some(deck_id) = app.deck_manager_ui.selected_deck_id {
+                        if let Some(deck) =
+                            app.study_data.decks.iter_mut().find(|d| d.id == deck_id)
+                        {
+                            egui::SidePanel::left("review_panel")
+                                .resizable(true)
+                                .exact_width(350.0)
+                                .min_width(300.0)
+                                .show_inside(ui, |ui| {
+                                    ui.with_layout(
+                                        egui::Layout::top_down_justified(egui::Align::Center),
+                                        |ui| {
+                                            ui.heading("📖 Study Mode");
+                                            ui.separator();
 
-                // Deck management panel (right side)
-                ui.vertical(|ui| {
-                    let needs_save = app.deck_manager_ui.display(ui, &mut app.study_data.decks);
-                    if needs_save {
-                        if let Err(err) = app.study_data.save() {
-                            app.status.show(&format!("Error saving: {}", err));
+                                            // Pass the deck_manager_ui reference so flashcard_reviewer can modify it
+                                            let mut back_to_decks = false;
+                                            app.flashcard_reviewer.display_with_callbacks(
+                                                ui,
+                                                deck,
+                                                &mut back_to_decks,
+                                                &mut app.deck_manager_ui.right_panel_open,
+                                            );
+
+                                            // Handle back to decks callback
+                                            if back_to_decks {
+                                                app.deck_manager_ui.view_mode =
+                                                    crate::ui::flashcard_ui::ViewMode::DeckList;
+                                                app.deck_manager_ui.selected_deck_id = None;
+                                            }
+                                        },
+                                    );
+                                });
                         }
                     }
+
+                    // Deck management panel (right side)
+                    ui.vertical(|ui| {
+                        let needs_save = app.deck_manager_ui.display(ui, &mut app.study_data.decks);
+                        if needs_save {
+                            if let Err(err) = app.study_data.save() {
+                                app.status.show(&format!("Error saving: {}", err));
+                            }
+                        }
+                    });
                 });
-            });
+            } else {
+                // Full width view when right panel is hidden
+                if let Some(deck_id) = app.deck_manager_ui.selected_deck_id {
+                    if let Some(deck) = app.study_data.decks.iter_mut().find(|d| d.id == deck_id) {
+                        ui.with_layout(
+                            egui::Layout::top_down_justified(egui::Align::Center),
+                            |ui| {
+                                ui.heading("📖 Study Mode");
+                                ui.separator();
+
+                                // Pass the deck_manager_ui reference so flashcard_reviewer can modify it
+                                let mut back_to_decks = false;
+                                app.flashcard_reviewer.display_with_callbacks(
+                                    ui,
+                                    deck,
+                                    &mut back_to_decks,
+                                    &mut app.deck_manager_ui.right_panel_open,
+                                );
+
+                                // Handle back to decks callback
+                                if back_to_decks {
+                                    app.deck_manager_ui.view_mode =
+                                        crate::ui::flashcard_ui::ViewMode::DeckList;
+                                    app.deck_manager_ui.selected_deck_id = None;
+                                }
+                            },
+                        );
+                    }
+                }
+            }
         }
     }
 }
@@ -85,3 +137,4 @@ fn display_split_view(ui: &mut egui::Ui, app: &mut StudyTimerApp) {
     // For now, just display the single view
     display_single_view(ui, app);
 }
+

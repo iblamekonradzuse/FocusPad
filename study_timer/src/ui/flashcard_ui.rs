@@ -7,7 +7,6 @@ use egui::TextureHandle;
 use image;
 use rand::prelude::SliceRandom;
 use std::collections::HashMap;
-use std::hash::Hash;
 use std::path::PathBuf;
 
 #[allow(dead_code)]
@@ -31,6 +30,7 @@ pub struct FlashcardReviewer {
     pub selected_image_path: Option<PathBuf>,
     pub algorithm_enabled: bool,
     texture_cache: HashMap<u64, TextureHandle>,
+    pub right_panel_open: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,167 +67,180 @@ impl FlashcardReviewer {
             pending_image_side: None,
             selected_image_path: None,
             texture_cache: HashMap::new(),
+            right_panel_open: true,
         }
     }
 
     pub fn display(&mut self, ui: &mut egui::Ui, deck: &mut Deck) {
+        let mut back_to_decks = false;
+        let mut right_panel_open = self.right_panel_open;
+
+        self.display_with_callbacks(ui, deck, &mut back_to_decks, &mut right_panel_open);
+
+        self.right_panel_open = right_panel_open;
+    }
+
+    pub fn display_with_callbacks(
+        &mut self,
+        ui: &mut egui::Ui,
+        deck: &mut Deck,
+        back_to_decks: &mut bool,
+        right_panel_open: &mut bool,
+    ) {
         if self.is_fullscreen {
             self.display_fullscreen(ui, deck);
         } else {
-            self.display_normal(ui, deck);
+            self.display_normal_with_callbacks(ui, deck, back_to_decks, right_panel_open);
         }
     }
 
-    fn display_fullscreen(&mut self, ui: &mut egui::Ui, deck: &mut Deck) {
-        ui.vertical_centered(|ui| {
-            // Exit fullscreen button
-            ui.horizontal(|ui| {
-                if ui.button("📱 Exit Fullscreen").clicked() {
-                    self.is_fullscreen = false;
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let total_cards = self.get_review_cards_count(deck);
-                    ui.label(format!(
-                        "Card {} of {}",
-                        self.current_card_index + 1,
-                        total_cards
-                    ));
-                });
-            });
+    fn display_image(&mut self, ui: &mut egui::Ui, card_image: &CardImage, max_size: [f32; 2]) {
+        // Check if texture already exists in cache
+        let cache_key = format!("{}_{}", card_image.id, card_image.data.len());
+        if let Some(texture_handle) =
+            self.texture_cache
+                .get(&cache_key.parse::<u64>().unwrap_or_else(|_| {
+                    use std::collections::hash_map::DefaultHasher;
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = DefaultHasher::new();
+                    cache_key.hash(&mut hasher);
+                    hasher.finish()
+                }))
+        {
+            // Use cached texture - display with proper size constraints
+            let texture_size = texture_handle.size_vec2();
+            let available_width = ui.available_width().min(max_size[0]);
+            let max_height = max_size[1];
 
-            ui.add_space(20.0);
-
-            // Get card data first, then drop the borrow
-            let card_data = if let Some(card) = self.get_current_card(deck) {
-                Some((
-                    card.front.clone(),
-                    card.back.clone(),
-                    card.front_image.clone(),
-                    card.back_image.clone(),
-                ))
+            // Calculate scale factor to fit within both width and height constraints
+            let width_scale = if texture_size.x > available_width {
+                available_width / texture_size.x
             } else {
-                None
+                1.0
             };
 
-            if let Some((card_front, card_back, front_image, back_image)) = card_data {
-                // Question
-                ui.add_space(40.0);
-                ui.label(egui::RichText::new("Question").size(24.0).strong());
-                ui.add_space(20.0);
+            let height_scale = if texture_size.y > max_height {
+                max_height / texture_size.y
+            } else {
+                1.0
+            };
 
-                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new(&card_front).size(32.0));
+            // Use the smaller scale factor to ensure the image fits within both constraints
+            let scale_factor = width_scale.min(height_scale);
 
-                    // Display front image if available
-                    if let Some(front_image) = &front_image {
-                        ui.add_space(10.0);
-                        self.display_image(ui, front_image, [400.0, 300.0]);
+            let display_width = texture_size.x * scale_factor;
+            let display_height = texture_size.y * scale_factor;
+
+            ui.add(
+                egui::Image::from_texture(texture_handle)
+                    .fit_to_exact_size(egui::Vec2::new(display_width, display_height)),
+            );
+            return;
+        }
+
+        // Only decode and load image if not in cache
+        match base64::engine::general_purpose::STANDARD.decode(&card_image.data) {
+            Ok(image_data) => {
+                match image::load_from_memory(&image_data) {
+                    Ok(dynamic_image) => {
+                        let rgba_image = dynamic_image.to_rgba8();
+                        let size = [rgba_image.width() as usize, rgba_image.height() as usize];
+                        let pixels = rgba_image.as_flat_samples();
+
+                        let color_image =
+                            egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+
+                        let texture_handle = ui.ctx().load_texture(
+                            format!("card_image_{}_{}", card_image.id, card_image.data.len()),
+                            color_image,
+                            egui::TextureOptions::default(),
+                        );
+
+                        // Display with proper size constraints
+                        let texture_size = texture_handle.size_vec2();
+                        let available_width = ui.available_width().min(max_size[0]);
+                        let max_height = max_size[1];
+
+                        // Calculate scale factor to fit within both width and height constraints
+                        let width_scale = if texture_size.x > available_width {
+                            available_width / texture_size.x
+                        } else {
+                            1.0
+                        };
+
+                        let height_scale = if texture_size.y > max_height {
+                            max_height / texture_size.y
+                        } else {
+                            1.0
+                        };
+
+                        // Use the smaller scale factor to ensure the image fits within both constraints
+                        let scale_factor = width_scale.min(height_scale);
+
+                        let display_width = texture_size.x * scale_factor;
+                        let display_height = texture_size.y * scale_factor;
+
+                        ui.add(
+                            egui::Image::from_texture(&texture_handle)
+                                .fit_to_exact_size(egui::Vec2::new(display_width, display_height)),
+                        );
+
+                        // Cache the texture for future use
+                        let cache_key = format!("{}_{}", card_image.id, card_image.data.len());
+                        let cache_key_hash = cache_key.parse::<u64>().unwrap_or_else(|_| {
+                            use std::collections::hash_map::DefaultHasher;
+                            use std::hash::{Hash, Hasher};
+                            let mut hasher = DefaultHasher::new();
+                            cache_key.hash(&mut hasher);
+                            hasher.finish()
+                        });
+                        self.texture_cache.insert(cache_key_hash, texture_handle);
                     }
-                });
-
-                ui.add_space(40.0);
-
-                if self.show_answer {
-                    ui.label(egui::RichText::new("Answer").size(24.0).strong());
-                    ui.add_space(20.0);
-
-                    // Grade buttons FIRST
-                    ui.allocate_ui_with_layout(
-                        egui::Vec2::new(ui.available_width(), 100.0),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            ui.spacing_mut().button_padding = egui::vec2(20.0, 15.0);
-
-                            // Add flexible space before buttons
-                            ui.allocate_space(egui::Vec2::new(
-                                (ui.available_width() - 350.0) / 2.0,
-                                0.0,
-                            ));
-
-                            if ui
-                                .button(
-                                    egui::RichText::new("Again")
-                                        .size(18.0)
-                                        .color(egui::Color32::from_rgb(220, 53, 69)),
-                                )
-                                .clicked()
-                            {
-                                self.grade_card(deck, Grade::Again);
-                            }
-                            if ui
-                                .button(
-                                    egui::RichText::new("Hard")
-                                        .size(18.0)
-                                        .color(egui::Color32::from_rgb(255, 193, 7)),
-                                )
-                                .clicked()
-                            {
-                                self.grade_card(deck, Grade::Hard);
-                            }
-                            if ui
-                                .button(
-                                    egui::RichText::new("Good")
-                                        .size(18.0)
-                                        .color(egui::Color32::from_rgb(40, 167, 69)),
-                                )
-                                .clicked()
-                            {
-                                self.grade_card(deck, Grade::Good);
-                            }
-                            if ui
-                                .button(
-                                    egui::RichText::new("Easy")
-                                        .size(18.0)
-                                        .color(egui::Color32::from_rgb(23, 162, 184)),
-                                )
-                                .clicked()
-                            {
-                                self.grade_card(deck, Grade::Easy);
-                            }
-                        },
-                    );
-
-                    ui.add_space(20.0);
-
-                    // THEN the answer content
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new(&card_back).size(32.0));
-
-                        // Display back image if available
-                        if let Some(back_image) = &back_image {
-                            ui.add_space(10.0);
-                            self.display_image(ui, back_image, [400.0, 300.0]);
-                        }
-                    });
-                } else {
-                    if ui
-                        .button(egui::RichText::new("Show Answer").size(20.0))
-                        .clicked()
-                    {
-                        self.show_answer = true;
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::RED,
+                            format!("Failed to load image: {}", e),
+                        );
                     }
                 }
-            } else {
-                ui.label(egui::RichText::new("No cards available for review").size(24.0));
             }
-        });
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::RED,
+                    format!("Failed to decode base64: {}", e),
+                );
+            }
+        }
     }
 
-    fn display_normal(&mut self, ui: &mut egui::Ui, deck: &mut Deck) {
+    fn display_normal_with_callbacks(
+        &mut self,
+        ui: &mut egui::Ui,
+        deck: &mut Deck,
+        back_to_decks: &mut bool,
+        right_panel_open: &mut bool,
+    ) {
         ui.vertical(|ui| {
             // Header with navigation
             ui.horizontal(|ui| {
-                ui.heading(&deck.name);
+                if ui.button("← Back to Decks").clicked() {
+                    *back_to_decks = true;
+                }
+                ui.separator();
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("🔍 Fullscreen").clicked() {
                         self.is_fullscreen = true;
                     }
+                    let toggle_text = if *right_panel_open {
+                        "Hide Panel"
+                    } else {
+                        "Show Panel"
+                    };
+                    if ui.button(toggle_text).clicked() {
+                        *right_panel_open = !*right_panel_open;
+                    }
                 });
             });
-
-            if let Some(desc) = &deck.description {
-                ui.label(desc);
-            }
 
             ui.separator();
 
@@ -304,7 +317,19 @@ impl FlashcardReviewer {
 
             ui.separator();
 
-            if let Some(card) = self.get_current_card(deck) {
+            // Get card data first, then drop the borrow
+            let card_data = if let Some(card) = self.get_current_card(deck) {
+                Some((
+                    card.front.clone(),
+                    card.back.clone(),
+                    card.front_image.clone(),
+                    card.back_image.clone(),
+                ))
+            } else {
+                None
+            };
+
+            if let Some((card_front, card_back, front_image, back_image)) = card_data {
                 // Card counter
                 let total_cards = self.get_review_cards_count(deck);
                 ui.label(format!(
@@ -319,37 +344,32 @@ impl FlashcardReviewer {
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new("Question:").size(16.0).strong());
                         ui.add_space(5.0);
-                        ui.label(egui::RichText::new(&card.front).size(14.0));
 
-                        // Display front image if available
-                        if let Some(front_image) = &card.front_image {
-                            ui.add_space(10.0);
-                            self.display_image(ui, front_image, [400.0, 300.0]);
-                        }
+                        // Make question content scrollable with controlled height
+                        ui.push_id("question_scroll", |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_source("question_content")
+                                .max_height(250.0) // Reduced from 400.0
+                                .min_scrolled_height(150.0) // Reduced from 200.0
+                                .auto_shrink([false; 2])
+                                .show(ui, |ui| {
+                                    ui.label(egui::RichText::new(&card_front).size(14.0));
+
+                                    // Display front image if available with smaller size
+                                    if let Some(front_image) = &front_image {
+                                        ui.add_space(10.0);
+                                        self.display_image(ui, front_image, [250.0, 150.0]);
+                                        // Reduced from [300.0, 200.0]
+                                    }
+                                });
+                        });
                     });
                 });
 
                 ui.add_space(10.0);
 
                 if self.show_answer {
-                    // Answer
-                    ui.group(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label(egui::RichText::new("Answer:").size(16.0).strong());
-                            ui.add_space(5.0);
-                            ui.label(egui::RichText::new(&card.back).size(14.0));
-
-                            // Display back image if available
-                            if let Some(back_image) = &card.back_image {
-                                ui.add_space(10.0);
-                                self.display_image(ui, back_image, [400.0, 300.0]);
-                            }
-                        });
-                    });
-
-                    ui.add_space(15.0);
-
-                    // Grade buttons
+                    // Grade buttons in the middle (between question and answer)
                     ui.horizontal(|ui| {
                         ui.spacing_mut().button_padding = egui::vec2(12.0, 8.0);
 
@@ -390,6 +410,35 @@ impl FlashcardReviewer {
                             self.grade_card(deck, Grade::Easy);
                         }
                     });
+
+                    ui.add_space(10.0);
+
+                    // Answer
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.label(egui::RichText::new("Answer:").size(16.0).strong());
+                            ui.add_space(5.0);
+
+                            // Make answer content scrollable with controlled height
+                            ui.push_id("answer_scroll", |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_source("answer_content")
+                                    .max_height(300.0) // Reduced from 600.0
+                                    .min_scrolled_height(150.0) // Reduced from 200.0
+                                    .auto_shrink([false; 2])
+                                    .show(ui, |ui| {
+                                        ui.label(egui::RichText::new(&card_back).size(14.0));
+
+                                        // Display back image if available with smaller size
+                                        if let Some(back_image) = &back_image {
+                                            ui.add_space(10.0);
+                                            self.display_image(ui, back_image, [250.0, 150.0]);
+                                            // Reduced from [400.0, 300.0]
+                                        }
+                                    });
+                            });
+                        });
+                    });
                 } else {
                     if ui
                         .button(egui::RichText::new("Show Answer").size(16.0))
@@ -406,111 +455,155 @@ impl FlashcardReviewer {
         });
     }
 
-    fn display_image(&mut self, ui: &mut egui::Ui, card_image: &CardImage, max_size: [f32; 2]) {
-        // Check if texture already exists in cache
-        let cache_key = format!("{}_{}", card_image.id, card_image.data.len());
-        if let Some(texture_handle) =
-            self.texture_cache
-                .get(&cache_key.parse::<u64>().unwrap_or_else(|_| {
-                    use std::collections::hash_map::DefaultHasher;
-                    use std::hash::{Hash, Hasher};
-                    let mut hasher = DefaultHasher::new();
-                    cache_key.hash(&mut hasher);
-                    hasher.finish()
-                }))
-        {
-            // Use cached texture - calculate display size
-            let texture_size = texture_handle.size_vec2();
-            let aspect_ratio = texture_size.x / texture_size.y;
-            let mut display_width = max_size[0];
-            let mut display_height = max_size[1];
+    fn display_fullscreen(&mut self, ui: &mut egui::Ui, deck: &mut Deck) {
+        ui.vertical_centered(|ui| {
+            // Exit fullscreen button
+            ui.horizontal(|ui| {
+                if ui.button("📱 Exit Fullscreen").clicked() {
+                    self.is_fullscreen = false;
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let total_cards = self.get_review_cards_count(deck);
+                    ui.label(format!(
+                        "Card {} of {}",
+                        self.current_card_index + 1,
+                        total_cards
+                    ));
+                });
+            });
 
-            if aspect_ratio > max_size[0] / max_size[1] {
-                display_height = display_width / aspect_ratio;
+            ui.add_space(20.0);
+
+            // Get card data first, then drop the borrow
+            let card_data = if let Some(card) = self.get_current_card(deck) {
+                Some((
+                    card.front.clone(),
+                    card.back.clone(),
+                    card.front_image.clone(),
+                    card.back_image.clone(),
+                ))
             } else {
-                display_width = display_height * aspect_ratio;
-            }
+                None
+            };
 
-            ui.add(
-                egui::Image::from_texture(texture_handle)
-                    .fit_to_exact_size(egui::Vec2::new(display_width, display_height)),
-            );
-            return;
-        }
+            if let Some((card_front, card_back, front_image, back_image)) = card_data {
+                // Question
+                ui.add_space(20.0);
+                ui.label(egui::RichText::new("Question").size(24.0).strong());
+                ui.add_space(15.0);
 
-        // Only decode and load image if not in cache
-        match base64::engine::general_purpose::STANDARD.decode(&card_image.data) {
-            Ok(image_data) => {
-                match image::load_from_memory(&image_data) {
-                    Ok(dynamic_image) => {
-                        let rgba_image = dynamic_image.to_rgba8();
-                        let size = [rgba_image.width() as usize, rgba_image.height() as usize];
-                        let pixels = rgba_image.as_flat_samples();
+                // Question content with size limit
+                ui.push_id("fullscreen_question_scroll", |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_source("fullscreen_question_content")
+                        .max_height(250.0) // Limit question area height
+                        .show(ui, |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                ui.label(egui::RichText::new(&card_front).size(28.0)); // Reduced from 32.0
 
-                        let color_image =
-                            egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-
-                        let texture_handle = ui.ctx().load_texture(
-                            format!("card_image_{}_{}", card_image.id, card_image.data.len()),
-                            color_image,
-                            egui::TextureOptions::default(),
-                        );
-
-                        // Calculate aspect ratio to maintain proportions
-                        let aspect_ratio = size[0] as f32 / size[1] as f32;
-                        let mut display_width = max_size[0];
-                        let mut display_height = max_size[1];
-
-                        if aspect_ratio > max_size[0] / max_size[1] {
-                            display_height = display_width / aspect_ratio;
-                        } else {
-                            display_width = display_height * aspect_ratio;
-                        }
-
-                        ui.add(
-                            egui::Image::from_texture(&texture_handle)
-                                .fit_to_exact_size(egui::Vec2::new(display_width, display_height)),
-                        );
-
-                        // Cache the texture for future use
-                        let cache_key = format!("{}_{}", card_image.id, card_image.data.len());
-                        let cache_key_hash = cache_key.parse::<u64>().unwrap_or_else(|_| {
-                            use std::collections::hash_map::DefaultHasher;
-                            use std::hash::{Hash, Hasher};
-                            let mut hasher = DefaultHasher::new();
-                            cache_key.hash(&mut hasher);
-                            hasher.finish()
+                                // Display front image if available with controlled size
+                                if let Some(front_image) = &front_image {
+                                    ui.add_space(10.0);
+                                    self.display_image(ui, front_image, [350.0, 200.0]);
+                                    // Reduced from [400.0, 300.0]
+                                }
+                            });
                         });
-                        self.texture_cache.insert(cache_key_hash, texture_handle);
-                    }
-                    Err(e) => {
-                        ui.colored_label(
-                            egui::Color32::RED,
-                            format!("Failed to load image: {}", e),
-                        );
+                });
+
+                ui.add_space(20.0);
+
+                if self.show_answer {
+                    ui.label(egui::RichText::new("Answer").size(24.0).strong());
+                    ui.add_space(15.0);
+
+                    // Grade buttons FIRST - always visible at the top
+                    ui.allocate_ui_with_layout(
+                        egui::Vec2::new(ui.available_width(), 60.0), // Reduced height from 100.0
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.spacing_mut().button_padding = egui::vec2(15.0, 10.0); // Reduced padding
+
+                            // Add flexible space before buttons
+                            ui.allocate_space(egui::Vec2::new(
+                                (ui.available_width() - 320.0) / 2.0, // Reduced from 350.0
+                                0.0,
+                            ));
+
+                            if ui
+                                .button(
+                                    egui::RichText::new("Again")
+                                        .size(16.0) // Reduced from 18.0
+                                        .color(egui::Color32::from_rgb(220, 53, 69)),
+                                )
+                                .clicked()
+                            {
+                                self.grade_card(deck, Grade::Again);
+                            }
+                            if ui
+                                .button(
+                                    egui::RichText::new("Hard")
+                                        .size(16.0) // Reduced from 18.0
+                                        .color(egui::Color32::from_rgb(255, 193, 7)),
+                                )
+                                .clicked()
+                            {
+                                self.grade_card(deck, Grade::Hard);
+                            }
+                            if ui
+                                .button(
+                                    egui::RichText::new("Good")
+                                        .size(16.0) // Reduced from 18.0
+                                        .color(egui::Color32::from_rgb(40, 167, 69)),
+                                )
+                                .clicked()
+                            {
+                                self.grade_card(deck, Grade::Good);
+                            }
+                            if ui
+                                .button(
+                                    egui::RichText::new("Easy")
+                                        .size(16.0) // Reduced from 18.0
+                                        .color(egui::Color32::from_rgb(23, 162, 184)),
+                                )
+                                .clicked()
+                            {
+                                self.grade_card(deck, Grade::Easy);
+                            }
+                        },
+                    );
+
+                    ui.add_space(15.0);
+
+                    // Answer content with size limit - scrollable if needed
+                    ui.push_id("fullscreen_answer_scroll", |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_source("fullscreen_answer_content")
+                            .max_height(300.0) // Limit answer area height
+                            .show(ui, |ui| {
+                                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                    ui.label(egui::RichText::new(&card_back).size(28.0)); // Reduced from 32.0
+
+                                    // Display back image if available with controlled size
+                                    if let Some(back_image) = &back_image {
+                                        ui.add_space(10.0);
+                                        self.display_image(ui, back_image, [350.0, 200.0]);
+                                        // Reduced from [400.0, 300.0]
+                                    }
+                                });
+                            });
+                    });
+                } else {
+                    if ui
+                        .button(egui::RichText::new("Show Answer").size(20.0))
+                        .clicked()
+                    {
+                        self.show_answer = true;
                     }
                 }
+            } else {
+                ui.label(egui::RichText::new("No cards available for review").size(24.0));
             }
-            Err(e) => {
-                ui.colored_label(
-                    egui::Color32::RED,
-                    format!("Failed to decode base64: {}", e),
-                );
-            }
-        }
-    }
-
-    pub fn clear_texture_cache(&mut self) {
-        self.texture_cache.clear();
-    }
-
-    pub fn remove_card_textures(&mut self, _card_id: u64) {
-        // Remove textures associated with the deleted card
-        self.texture_cache.retain(|&_id, _| {
-            // Keep textures that don't belong to the deleted card
-            // This is a simple approach - i might need to track image IDs more precisely
-            true // For now, keep all textures as i don't have direct card->image mapping
-                 // maybe in the future, but i am just burnt out with image rendering rn.
         });
     }
 
@@ -649,12 +742,13 @@ pub struct DeckManagerUI {
     pub edit_card_front: String,
     pub edit_card_back: String,
     pub delete_confirmation: Option<String>, // Holds the type of item being deleted ("deck" or "card")
-    pub item_to_delete: Option<u64>,         // ID of item to deleted
+    pub item_to_delete: Option<u64>,         // ID of item to delete
     pub show_image_dialog: bool,
     pub pending_image_side: Option<ImageSide>,
     pub pending_card_id: Option<u64>,
     pub pending_front_image: Option<CardImage>,
     pub pending_back_image: Option<CardImage>,
+    pub right_panel_open: bool, // New field for toggling right panel
 }
 
 impl DeckManagerUI {
@@ -679,6 +773,7 @@ impl DeckManagerUI {
             pending_card_id: None,
             pending_front_image: None,
             pending_back_image: None,
+            right_panel_open: true, // Default to open
         }
     }
 
@@ -774,7 +869,6 @@ impl DeckManagerUI {
 
         needs_save
     }
-
     fn display_deck_list(&mut self, ui: &mut egui::Ui, decks: &mut Vec<Deck>) -> bool {
         let mut needs_save = false;
 
@@ -907,131 +1001,140 @@ impl DeckManagerUI {
 
         if let Some(deck_id) = self.selected_deck_id {
             if let Some(deck) = decks.iter_mut().find(|d| d.id == deck_id) {
-                // Use TopBottomPanel to create better layout
-                egui::TopBottomPanel::top("deck_header").show_inside(ui, |ui| {
-                    // Header with back button
-                    ui.horizontal(|ui| {
-                        if ui.button("← Back to Decks").clicked() {
-                            self.view_mode = ViewMode::DeckList;
-                            self.selected_deck_id = None;
-                        }
-                        ui.separator();
-                        ui.heading(&deck.name);
-                    });
-
-                    if let Some(desc) = &deck.description {
-                        ui.label(desc);
-                    }
-                });
-
-                egui::TopBottomPanel::top("add_card_section").show_inside(ui, |ui| {
-                    ui.separator();
-
-                    // Add new card section
-                    ui.heading("➕ Add New Card");
-                    ui.add_space(5.0);
-
-                    ui.label("Front (Question):");
-                    ui.add(egui::TextEdit::multiline(&mut self.new_card_front).desired_rows(3));
-
-                    ui.horizontal(|ui| {
-                        if ui.button("📷 Add Image to Front").clicked() {
-                            self.show_image_dialog = true;
-                            self.pending_image_side = Some(ImageSide::Front);
-                            self.pending_card_id = None; // For new cards
-                        }
-                    });
-
-                    ui.label("Back (Answer):");
-                    ui.add(egui::TextEdit::multiline(&mut self.new_card_back).desired_rows(3));
-
-                    ui.horizontal(|ui| {
-                        if ui.button("📷 Add Image to Back").clicked() {
-                            self.show_image_dialog = true;
-                            self.pending_image_side = Some(ImageSide::Back);
-                            self.pending_card_id = None; // For new cards
-                        }
-                    });
-
-                    ui.add_space(10.0);
-
-                    if ui.button("Add Card").clicked()
-                        && !self.new_card_front.is_empty()
-                        && !self.new_card_back.is_empty()
-                    {
-                        let mut new_card = crate::ui::flashcard::Card::new(
-                            deck.id,
-                            self.new_card_front.clone(),
-                            self.new_card_back.clone(),
-                        );
-
-                        // Add pending images if they exist
-                        if let Some(front_image) = self.pending_front_image.take() {
-                            new_card.front_image = Some(front_image);
-                        }
-                        if let Some(back_image) = self.pending_back_image.take() {
-                            new_card.back_image = Some(back_image);
-                        }
-
-                        deck.cards.push(new_card);
-                        self.new_card_front.clear();
-                        self.new_card_back.clear();
-                        needs_save = true;
-                    }
-                    ui.add_space(10.0);
-                    ui.separator();
-                });
-
-                // Cards list - now takes up remaining space
-                egui::CentralPanel::default().show_inside(ui, |ui| {
-                    ui.heading("📋 Cards in Deck");
-                    ui.add_space(10.0);
-
-                    if deck.cards.is_empty() {
-                        ui.centered_and_justified(|ui| {
-                            ui.label("No cards in this deck yet. Add some cards above!");
+                // Only show the entire panel if toggle is enabled
+                if self.right_panel_open {
+                    // Use TopBottomPanel to create better layout
+                    egui::TopBottomPanel::top("deck_header").show_inside(ui, |ui| {
+                        // Header
+                        ui.horizontal(|ui| {
+                            ui.heading(&deck.name);
                         });
-                    } else {
-                        // Now the scroll area will take up all remaining vertical space
-                        egui::ScrollArea::vertical()
-                            .auto_shrink([false; 2])
-                            .show(ui, |ui| {
-                                for card in &deck.cards {
-                                    ui.group(|ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.vertical(|ui| {
-                                                ui.label(egui::RichText::new("Front:").strong());
-                                                ui.label(&card.front);
-                                                ui.add_space(5.0);
-                                                ui.label(egui::RichText::new("Back:").strong());
-                                                ui.label(&card.back);
-                                            });
 
-                                            ui.with_layout(
-                                                egui::Layout::right_to_left(egui::Align::Min),
-                                                |ui| {
-                                                    // Delete card button
-                                                    if ui.button("🗑").clicked() {
-                                                        self.delete_confirmation =
-                                                            Some("card".to_string());
-                                                        self.item_to_delete = Some(card.id);
-                                                    }
+                        if let Some(desc) = &deck.description {
+                            ui.label(desc);
+                        }
+                    });
 
-                                                    // Edit card button
-                                                    if ui.button("✏").clicked() {
-                                                        self.edit_card_id = Some(card.id);
-                                                        self.edit_card_front = card.front.clone();
-                                                        self.edit_card_back = card.back.clone();
-                                                    }
-                                                },
-                                            );
-                                        });
-                                    });
-                                    ui.add_space(8.0);
-                                }
+                    egui::TopBottomPanel::top("add_card_section").show_inside(ui, |ui| {
+                        ui.separator();
+
+                        // Add new card section
+                        ui.heading("➕ Add New Card");
+                        ui.add_space(5.0);
+
+                        ui.label("Front (Question):");
+                        ui.add(egui::TextEdit::multiline(&mut self.new_card_front).desired_rows(3));
+
+                        ui.horizontal(|ui| {
+                            if ui.button("📷 Add Image to Front").clicked() {
+                                self.show_image_dialog = true;
+                                self.pending_image_side = Some(ImageSide::Front);
+                                self.pending_card_id = None; // For new cards
+                            }
+                        });
+
+                        ui.label("Back (Answer):");
+                        ui.add(egui::TextEdit::multiline(&mut self.new_card_back).desired_rows(3));
+
+                        ui.horizontal(|ui| {
+                            if ui.button("📷 Add Image to Back").clicked() {
+                                self.show_image_dialog = true;
+                                self.pending_image_side = Some(ImageSide::Back);
+                                self.pending_card_id = None; // For new cards
+                            }
+                        });
+
+                        ui.add_space(10.0);
+
+                        if ui.button("Add Card").clicked()
+                            && !self.new_card_front.is_empty()
+                            && !self.new_card_back.is_empty()
+                        {
+                            let mut new_card = crate::ui::flashcard::Card::new(
+                                deck.id,
+                                self.new_card_front.clone(),
+                                self.new_card_back.clone(),
+                            );
+
+                            // Add pending images if they exist
+                            if let Some(front_image) = self.pending_front_image.take() {
+                                new_card.front_image = Some(front_image);
+                            }
+                            if let Some(back_image) = self.pending_back_image.take() {
+                                new_card.back_image = Some(back_image);
+                            }
+
+                            deck.cards.push(new_card);
+                            self.new_card_front.clear();
+                            self.new_card_back.clear();
+                            needs_save = true;
+                        }
+                        ui.add_space(10.0);
+                        ui.separator();
+                    });
+
+                    // Cards list - now takes up remaining space
+                    egui::CentralPanel::default().show_inside(ui, |ui| {
+                        ui.heading("📋 Cards in Deck");
+                        ui.add_space(10.0);
+
+                        if deck.cards.is_empty() {
+                            ui.centered_and_justified(|ui| {
+                                ui.label("No cards in this deck yet. Add some cards above!");
                             });
-                    }
-                });
+                        } else {
+                            // Now the scroll area will take up all remaining vertical space
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false; 2])
+                                .show(ui, |ui| {
+                                    for card in &deck.cards {
+                                        ui.group(|ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.vertical(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new("Front:").strong(),
+                                                    );
+                                                    ui.label(&card.front);
+                                                    ui.add_space(5.0);
+                                                    ui.label(egui::RichText::new("Back:").strong());
+                                                    ui.label(&card.back);
+                                                });
+
+                                                ui.with_layout(
+                                                    egui::Layout::right_to_left(egui::Align::Min),
+                                                    |ui| {
+                                                        // Delete card button
+                                                        if ui.button("🗑").clicked() {
+                                                            self.delete_confirmation =
+                                                                Some("card".to_string());
+                                                            self.item_to_delete = Some(card.id);
+                                                        }
+
+                                                        // Edit card button
+                                                        if ui.button("✏").clicked() {
+                                                            self.edit_card_id = Some(card.id);
+                                                            self.edit_card_front =
+                                                                card.front.clone();
+                                                            self.edit_card_back = card.back.clone();
+                                                        }
+                                                    },
+                                                );
+                                            });
+                                        });
+                                        ui.add_space(8.0);
+                                    }
+                                });
+                        }
+                    });
+                } else {
+                    // When panel is hidden, just show a simple message
+                    ui.separator();
+                    ui.centered_and_justified(|ui| {
+                        ui.label(
+                            "Panel hidden. Management interface collapsed to give more space.",
+                        );
+                    });
+                }
             }
         }
 

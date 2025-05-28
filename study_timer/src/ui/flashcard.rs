@@ -142,14 +142,6 @@ impl Deck {
         }
     }
 
-    pub fn add_card(&mut self, front: String, back: String) -> u64 {
-        let card_id = self.get_next_card_id();
-        let mut card = Card::new(self.id, front, back);
-        card.id = card_id;
-        self.cards.push(card);
-        card_id
-    }
-
     pub fn get_due_cards(&self, algorithm_enabled: bool) -> Vec<&Card> {
         if algorithm_enabled {
             let today = Local::now().format("%Y-%m-%d").to_string();
@@ -177,13 +169,4 @@ impl Deck {
             })
             .collect()
     }
-
-    fn get_next_card_id(&self) -> u64 {
-        if let Some(max_id) = self.cards.iter().map(|c| c.id).max() {
-            max_id + 1
-        } else {
-            1
-        }
-    }
 }
-

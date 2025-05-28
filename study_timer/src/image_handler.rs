@@ -39,10 +39,6 @@ impl CardImage {
         Self::new(filename, data)
     }
 
-    pub fn get_data_url(&self) -> String {
-        format!("data:{};base64,{}", self.mime_type, self.data)
-    }
-
     pub fn save_to_disk(&self, images_dir: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
         fs::create_dir_all(images_dir)?;
 
@@ -103,50 +99,6 @@ impl ImageManager {
         image.save_to_disk(&self.images_dir)?;
         Ok(image)
     }
-
-    pub fn add_image_from_data(
-        &self,
-        filename: String,
-        data: Vec<u8>,
-    ) -> Result<CardImage, Box<dyn std::error::Error>> {
-        let image = CardImage::new(filename, data)?;
-        // Optionally save to disk for backup
-        image.save_to_disk(&self.images_dir)?;
-        Ok(image)
-    }
-
-    pub fn delete_image(&self, image: &CardImage) -> Result<(), Box<dyn std::error::Error>> {
-        let file_path = self.images_dir.join(&image.filename);
-        if file_path.exists() {
-            fs::remove_file(file_path)?;
-        }
-        Ok(())
-    }
-
-    pub fn cleanup_unused_images(
-        &self,
-        used_image_ids: &[String],
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if !self.images_dir.exists() {
-            return Ok(());
-        }
-
-        for entry in fs::read_dir(&self.images_dir)? {
-            let entry = entry?;
-            let filename = entry.file_name().to_string_lossy().to_string();
-
-            // Check if this image is still being used
-            let is_used = used_image_ids
-                .iter()
-                .any(|id| id.ends_with(&filename) || filename.contains(id));
-
-            if !is_used {
-                fs::remove_file(entry.path())?;
-            }
-        }
-
-        Ok(())
-    }
 }
 
 pub fn open_file_dialog() -> Option<PathBuf> {
@@ -160,34 +112,3 @@ pub fn open_file_dialog() -> Option<PathBuf> {
         .set_title("Select Image for Flashcard")
         .pick_file()
 }
-
-// Helper function to validate image file
-pub fn is_valid_image_file(path: &Path) -> bool {
-    if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
-        matches!(
-            extension.to_lowercase().as_str(),
-            "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg"
-        )
-    } else {
-        false
-    }
-}
-
-// Helper function to format file size
-pub fn format_file_size(size: usize) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
-    let mut size = size as f64;
-    let mut unit_index = 0;
-
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit_index += 1;
-    }
-
-    if unit_index == 0 {
-        format!("{} {}", size as usize, UNITS[unit_index])
-    } else {
-        format!("{:.1} {}", size, UNITS[unit_index])
-    }
-}
-
