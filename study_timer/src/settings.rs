@@ -24,6 +24,11 @@ pub enum PresetTheme {
     Forest,
     Sunset,
     Purple,
+    Gruvbox,
+    RosePine,
+    Nord,
+    Dracula,
+    Monokai,
     Custom,
 }
 
@@ -81,6 +86,56 @@ impl PresetTheme {
                 accent: [186, 85, 211, 255],
                 panel_background: [50, 40, 70, 255],
             },
+            PresetTheme::Gruvbox => ColorTheme {
+                background: [40, 40, 40, 255],            // #282828
+                navigation_background: [50, 48, 47, 255], // #32302f
+                active_tab: [250, 189, 47, 255],          // #fabd2f
+                inactive_tab: [146, 131, 116, 255],       // #928374
+                text_primary: [235, 219, 178, 255],       // #ebdbb2
+                text_secondary: [168, 153, 132, 255],     // #a89984
+                accent: [254, 128, 25, 255],              // #fe8019
+                panel_background: [60, 56, 54, 255],      // #3c3836
+            },
+            PresetTheme::RosePine => ColorTheme {
+                background: [25, 23, 36, 255],            // #191724
+                navigation_background: [31, 29, 46, 255], // #1f1d2e
+                active_tab: [235, 188, 186, 255],         // #ebbcba
+                inactive_tab: [110, 106, 134, 255],       // #6e6a86
+                text_primary: [224, 222, 244, 255],       // #e0def4
+                text_secondary: [144, 140, 170, 255],     // #908caa
+                accent: [196, 167, 231, 255],             // #c4a7e7
+                panel_background: [38, 35, 58, 255],      // #26233a
+            },
+            PresetTheme::Nord => ColorTheme {
+                background: [46, 52, 64, 255],            // #2e3440
+                navigation_background: [59, 66, 82, 255], // #3b4252
+                active_tab: [136, 192, 208, 255],         // #88c0d0
+                inactive_tab: [76, 86, 106, 255],         // #4c566a
+                text_primary: [236, 239, 244, 255],       // #eceff4
+                text_secondary: [216, 222, 233, 255],     // #d8dee9
+                accent: [94, 129, 172, 255],              // #5e81ac
+                panel_background: [67, 76, 94, 255],      // #434c5e
+            },
+            PresetTheme::Dracula => ColorTheme {
+                background: [40, 42, 54, 255],            // #282a36
+                navigation_background: [68, 71, 90, 255], // #44475a
+                active_tab: [255, 121, 198, 255],         // #ff79c6
+                inactive_tab: [98, 114, 164, 255],        // #6272a4
+                text_primary: [248, 248, 242, 255],       // #f8f8f2
+                text_secondary: [189, 147, 249, 255],     // #bd93f9
+                accent: [139, 233, 253, 255],             // #8be9fd
+                panel_background: [68, 71, 90, 255],      // #44475a
+            },
+            PresetTheme::Monokai => ColorTheme {
+                background: [39, 40, 34, 255],            // #272822
+                navigation_background: [73, 72, 62, 255], // #49483e
+                active_tab: [249, 38, 114, 255],          // #f92672
+                inactive_tab: [117, 113, 94, 255],        // #75715e
+                text_primary: [248, 248, 242, 255],       // #f8f8f2
+                text_secondary: [166, 226, 46, 255],      // #a6e22e
+                accent: [174, 129, 255, 255],             // #ae81ff
+                panel_background: [73, 72, 62, 255],      // #49483e
+            },
             PresetTheme::Custom => ColorTheme::default(), // Will use custom values
         }
     }
@@ -93,6 +148,11 @@ impl PresetTheme {
             PresetTheme::Forest => "Forest",
             PresetTheme::Sunset => "Sunset",
             PresetTheme::Purple => "Purple",
+            PresetTheme::Gruvbox => "Gruvbox",
+            PresetTheme::RosePine => "Rose Pine",
+            PresetTheme::Nord => "Nord",
+            PresetTheme::Dracula => "Dracula",
+            PresetTheme::Monokai => "Monokai",
             PresetTheme::Custom => "Custom",
         }
     }
@@ -105,8 +165,43 @@ impl PresetTheme {
             PresetTheme::Forest,
             PresetTheme::Sunset,
             PresetTheme::Purple,
+            PresetTheme::Gruvbox,
+            PresetTheme::RosePine,
+            PresetTheme::Nord,
+            PresetTheme::Dracula,
+            PresetTheme::Monokai,
             PresetTheme::Custom,
         ]
+    }
+
+    /// Get themes arranged in rows for UI display (2 rows x 6 themes each)
+    pub fn get_theme_rows() -> Vec<Vec<PresetTheme>> {
+        let all_themes = Self::all_presets();
+        let mut rows = Vec::new();
+
+        // First row - 6 themes
+        rows.push(vec![
+            PresetTheme::Default,
+            PresetTheme::Dark,
+            PresetTheme::Ocean,
+            PresetTheme::Forest,
+            PresetTheme::Sunset,
+            PresetTheme::Purple,
+        ]);
+
+        // Second row - 6 themes (including Custom at the end)
+        rows.push(vec![
+            PresetTheme::Gruvbox,
+            PresetTheme::RosePine,
+            PresetTheme::Nord,
+            PresetTheme::Dracula,
+            PresetTheme::Monokai,
+        ]);
+
+        // Third row for Custom (if you want to keep it separate)
+        rows.push(vec![PresetTheme::Custom]);
+
+        rows
     }
 }
 
@@ -427,3 +522,4 @@ impl AppSettings {
         }
     }
 }
+

@@ -138,106 +138,240 @@ impl StudyTimerApp {
         if self.keyboard_handler.close_split_requested {
             self.tab_manager.close_split();
         }
+
+        // Handle tab switching by number
+        if let Some(tab_index) = self.keyboard_handler.tab_number_requested {
+            // Collect the target tab ID first, before any mutable borrows
+            let target_tab_id = {
+                let non_settings_tabs: Vec<_> = self
+                    .tab_manager
+                    .tabs
+                    .iter()
+                    .filter(|tab| tab.tab_type != Tab::Settings)
+                    .collect();
+
+                if tab_index < non_settings_tabs.len() {
+                    Some(non_settings_tabs[tab_index].id.clone())
+                } else {
+                    None
+                }
+            };
+
+            // Now handle the tab switching with the collected ID
+            match target_tab_id {
+                Some(target_id) => {
+                    if self.tab_manager.is_split_active() {
+                        self.tab_manager
+                            .set_split_active_tab(&target_id, self.last_used_split_pane);
+                    } else {
+                        self.tab_manager.set_active_tab(&target_id);
+                    }
+                }
+                None => {
+                    self.status
+                        .show(&format!("Tab {} does not exist", tab_index + 1));
+                }
+            }
+        }
+
+        // Handle switching to last used tab
+        if self.keyboard_handler.switch_to_last_tab_requested {
+            if !self.tab_manager.switch_to_last_tab() {
+                self.status.show("No previous tab to switch to");
+            }
+        }
     }
 
     fn render_tab_bar(&mut self, ui: &mut egui::Ui) {
         let colors = self.settings.get_current_colors();
 
+        // Tab bar with proper margins to keep content visible
         let tab_bar_frame = egui::Frame::default()
             .fill(colors.navigation_background_color32())
-            .inner_margin(egui::Margin::symmetric(8.0, 4.0));
+            .shadow(egui::epaint::Shadow {
+                extrusion: 2.0,
+                color: egui::Color32::from_black_alpha(20),
+            })
+            .inner_margin(egui::Margin {
+                left: 8.0,
+                right: 8.0,
+                top: -4.0, // Move buttons top edge out of screen
+                bottom: 6.0,
+            })
+            .rounding(egui::Rounding::same(3.0));
 
         tab_bar_frame.show(ui, |ui| {
             ui.horizontal(|ui| {
-                egui::ScrollArea::horizontal()
-                    .id_source("tab_bar_scroll")
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let tabs_to_render: Vec<_> = self
-                                .tab_manager
-                                .tabs
-                                .iter()
-                                .filter(|tab| tab.tab_type != Tab::Settings)
-                                .cloned()
-                                .collect();
+                // Left section - scrollable tabs (takes most of the space)
+                ui.push_id("tab_bar_left_section", |ui| {
+                    // Allocate space for tabs, leaving room for right controls
+                    let available_width = ui.available_width() - 250.0; // Reserve space for right controls
 
-                            for (index, tab) in tabs_to_render.iter().enumerate() {
-                                let is_active = tab.id == self.tab_manager.active_tab_id;
-                                self.render_draggable_tab(ui, tab, is_active, index);
-                            }
+                    ui.allocate_ui_with_layout(
+                        [available_width, ui.available_height()].into(),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            egui::ScrollArea::horizontal()
+                                .id_source("tab_bar_scroll")
+                                .auto_shrink([false, true])
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 4.0;
 
-                            let new_tab_button = egui::Button::new("+")
-                                .fill(colors.accent_color32())
-                                .stroke(egui::Stroke::new(1.0, colors.text_primary_color32()));
+                                        let tabs_to_render: Vec<_> = self
+                                            .tab_manager
+                                            .tabs
+                                            .iter()
+                                            .filter(|tab| tab.tab_type != Tab::Settings)
+                                            .cloned()
+                                            .collect();
 
-                            if ui.add(new_tab_button).clicked() {
-                                self.tab_selector.show();
-                            }
+                                        for (index, tab) in tabs_to_render.iter().enumerate() {
+                                            ui.push_id(format!("tab_{}", tab.id), |ui| {
+                                                let is_active =
+                                                    tab.id == self.tab_manager.active_tab_id;
+                                                self.render_enhanced_tab(ui, tab, is_active, index);
+                                            });
+                                        }
+
+                                        // New tab button with same padding as tabs
+                                        ui.push_id("new_tab_button", |ui| {
+                                            // Use same spacing as between tabs
+                                            ui.add_space(4.0);
+
+                                            // Allocate space for the new tab button with exact same dimensions as tabs
+                                            let tab_width = 90.0;
+                                            let tab_height = 50.0;
+                                            let button_rect = ui
+                                                .allocate_space(egui::Vec2::new(
+                                                    tab_width, tab_height,
+                                                ))
+                                                .1;
+
+                                            // Draw button background with rounded corners (same as tabs)
+                                            ui.painter().rect_filled(
+                                                button_rect,
+                                                egui::Rounding::same(6.0),
+                                                colors.background_color32(),
+                                            );
+
+                                            // Draw border/stroke (same as inactive tabs)
+                                            ui.painter().rect_stroke(
+                                                button_rect,
+                                                egui::Rounding::same(6.0),
+                                                egui::Stroke::new(1.0, colors.accent_color32()),
+                                            );
+
+                                            // Draw "+" icon at the top center
+                                            let icon_y = button_rect.min.y + 12.0;
+                                            ui.painter().text(
+                                                egui::Pos2::new(button_rect.center().x, icon_y),
+                                                egui::Align2::CENTER_TOP,
+                                                "+",
+                                                egui::FontId::new(
+                                                    16.0,
+                                                    egui::FontFamily::Proportional,
+                                                ),
+                                                colors.text_primary_color32(),
+                                            );
+
+                                            // Draw "New" text at the bottom center
+                                            let text_y = button_rect.max.y - 8.0;
+                                            ui.painter().text(
+                                                egui::Pos2::new(button_rect.center().x, text_y),
+                                                egui::Align2::CENTER_BOTTOM,
+                                                "New",
+                                                egui::FontId::new(
+                                                    10.0,
+                                                    egui::FontFamily::Proportional,
+                                                ),
+                                                colors.text_primary_color32(),
+                                            );
+
+                                            // Handle button interaction
+                                            let button_response = ui.interact(
+                                                button_rect,
+                                                egui::Id::new("new_tab_button_interact"),
+                                                egui::Sense::click(),
+                                            );
+
+                                            if button_response.clicked() {
+                                                self.tab_selector.show();
+                                            }
+                                        });
+                                    });
+                                });
+                        },
+                    );
+                });
+
+                // Right section - fixed layout to prevent overlapping
+                ui.push_id("tab_bar_right_section", |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Settings tab (rightmost, fixed position)
+                        ui.push_id("settings_tab_section", |ui| {
+                            self.render_settings_tab_button(ui);
+                        });
+
+                        ui.add_space(8.0); // Space between settings and other controls
+
+                        // Weather and split controls in a compact horizontal layout
+                        ui.push_id("right_controls_horizontal", |ui| {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 4.0;
+
+                                // Weather widget first
+                                ui.push_id("weather_widget_section", |ui| {
+                                    self.render_weather_widget_compact(ui);
+                                });
+
+                                // Split controls after weather (only if not in split mode)
+                                if !self.tab_manager.is_split_active() {
+                                    ui.push_id("split_controls_section", |ui| {
+                                        self.render_split_controls_compact(ui);
+                                    });
+                                }
+                            });
                         });
                     });
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let settings_tab_info = self
-                        .tab_manager
-                        .tabs
-                        .iter()
-                        .find(|tab| tab.tab_type == Tab::Settings)
-                        .map(|tab| (tab.id.clone(), tab.id == self.tab_manager.active_tab_id));
-
-                    if let Some((settings_tab_id, is_active)) = settings_tab_info {
-                        let button_color = if is_active {
-                            colors.active_tab_color32()
-                        } else {
-                            colors.inactive_tab_color32()
-                        };
-
-                        let text_color = if is_active {
-                            colors.text_primary_color32()
-                        } else {
-                            colors.text_secondary_color32()
-                        };
-
-                        let button =
-                            egui::Button::new(egui::RichText::new("⚙️ Settings").color(text_color))
-                                .fill(button_color)
-                                .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
-
-                        if ui.add(button).clicked() {
-                            if self.tab_manager.is_split_active() {
-                                self.tab_manager.set_split_active_tab(
-                                    &settings_tab_id,
-                                    self.last_used_split_pane,
-                                );
-                            } else {
-                                self.tab_manager.set_active_tab(&settings_tab_id);
-                            }
-                        }
-                    }
-
-                    // Add weather widget
-                    ui.separator();
-                    if self.weather_widget.render(ui) {
-                        // Save weather settings when city changes
-                        let _ = self.weather_widget.save();
-                    }
-
-                    // Add split buttons next to weather widget
-                    if !self.tab_manager.is_split_active() {
-                        ui.separator();
-
-                        if ui.button("⬍").clicked() {
-                            self.tab_manager.create_split(SplitDirection::Horizontal);
-                        }
-                        if ui.button("⬌").clicked() {
-                            self.tab_manager.create_split(SplitDirection::Vertical);
-                        }
-                    }
                 });
             });
         });
     }
 
-    fn render_draggable_tab(
+    fn render_split_controls_compact(&mut self, ui: &mut egui::Ui) {
+        let colors = self.settings.get_current_colors();
+
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0; // Small spacing between buttons
+
+            let split_button_style = |ui: &mut egui::Ui, icon: &str, button_id: &str| {
+                ui.push_id(button_id, |ui| {
+                    let button = egui::Button::new(
+                        egui::RichText::new(icon)
+                            .color(colors.text_secondary_color32())
+                            .size(10.0), // Slightly larger for better visibility
+                    )
+                    .fill(colors.background_color32())
+                    .rounding(egui::Rounding::same(3.0))
+                    .min_size(egui::Vec2::new(20.0, 16.0)); // Slightly larger
+
+                    ui.add(button)
+                })
+                .inner
+            };
+
+            if split_button_style(ui, "⬍", "horizontal_split").clicked() {
+                self.tab_manager.create_split(SplitDirection::Horizontal);
+            }
+
+            if split_button_style(ui, "⬌", "vertical_split").clicked() {
+                self.tab_manager.create_split(SplitDirection::Vertical);
+            }
+        });
+    }
+
+    fn render_enhanced_tab(
         &mut self,
         ui: &mut egui::Ui,
         tab: &crate::tab_manager::TabInstance,
@@ -246,27 +380,135 @@ impl StudyTimerApp {
     ) {
         let colors = self.settings.get_current_colors();
 
-        ui.horizontal(|ui| {
-            let button_color = if is_active {
-                colors.active_tab_color32()
+        // Create a vertical layout for the tab content with unique ID
+        ui.push_id(format!("enhanced_tab_{}", tab.id), |ui| {
+            // Wider tab dimensions with spacing
+            let tab_width = 90.0;
+            let tab_height = 50.0;
+
+            let (button_color, text_color, stroke_width) = if is_active {
+                (
+                    colors.active_tab_color32(),
+                    colors.text_primary_color32(),
+                    2.0,
+                )
             } else {
-                colors.inactive_tab_color32()
+                (
+                    colors.background_color32(),
+                    colors.text_secondary_color32(),
+                    1.0,
+                )
             };
 
-            let text_color = if is_active {
-                colors.text_primary_color32()
-            } else {
-                colors.text_secondary_color32()
+            let tab_icon = match tab.tab_type {
+                Tab::Timer => "⏱",
+                Tab::Stats => "📊",
+                Tab::Record => "📝",
+                Tab::Graph => "📈",
+                Tab::Todo => "✅",
+                Tab::Calculator => "=",
+                Tab::Markdown => "📄",
+                Tab::Reminder => "🔔",
+                Tab::Terminal => "💻",
+                Tab::Flashcards => "🃏",
+                Tab::Settings => "⚙",
             };
 
-            let button =
-                egui::Button::new(egui::RichText::new(&tab.get_display_title()).color(text_color))
-                    .fill(button_color)
-                    .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
+            // Get display name (shortened if needed)
+            let full_title = tab.get_display_title();
+            let display_name = match tab.tab_type {
+                Tab::Todo => "Todo",
+                _ => full_title.split_whitespace().next().unwrap_or("Tab"),
+            };
 
-            let response = ui.add(button);
+            // Allocate space for the entire tab
+            let tab_rect = ui.allocate_space(egui::Vec2::new(tab_width, tab_height)).1;
 
-            if response.clicked() && self.dragging_tab_id.is_none() {
+            // Draw tab background with rounded corners
+            ui.painter()
+                .rect_filled(tab_rect, egui::Rounding::same(6.0), button_color);
+
+            // Draw border/stroke
+            ui.painter().rect_stroke(
+                tab_rect,
+                egui::Rounding::same(6.0),
+                egui::Stroke::new(stroke_width, colors.accent_color32()),
+            );
+
+            // Draw icon at the top center (moved down to be more visible)
+            let icon_y = tab_rect.min.y + 12.0;
+            ui.painter().text(
+                egui::Pos2::new(tab_rect.center().x, icon_y),
+                egui::Align2::CENTER_TOP,
+                tab_icon,
+                egui::FontId::new(16.0, egui::FontFamily::Proportional),
+                text_color,
+            );
+
+            // Draw text at the bottom center (moved up to be more visible)
+            let text_y = tab_rect.max.y - 8.0;
+            ui.painter().text(
+                egui::Pos2::new(tab_rect.center().x, text_y),
+                egui::Align2::CENTER_BOTTOM,
+                display_name,
+                egui::FontId::new(10.0, egui::FontFamily::Proportional),
+                text_color,
+            );
+
+            // Handle close button first (if it exists)
+            let close_button_clicked = if tab.can_close {
+                let close_rect = egui::Rect::from_min_size(
+                    egui::Pos2::new(tab_rect.max.x - 18.0, tab_rect.min.y + 8.0),
+                    egui::Vec2::new(14.0, 14.0),
+                );
+
+                let close_response = ui.interact(
+                    close_rect,
+                    egui::Id::new(format!("close_btn_{}", tab.id)),
+                    egui::Sense::click(),
+                );
+
+                // Draw close button "×" without any hover effects
+                ui.painter().text(
+                    close_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "×",
+                    egui::FontId::new(12.0, egui::FontFamily::Proportional),
+                    if is_active {
+                        colors.text_primary_color32()
+                    } else {
+                        colors.text_secondary_color32().gamma_multiply(0.7)
+                    },
+                );
+
+                close_response.clicked()
+            } else {
+                false
+            };
+
+            // Handle main tab area (excluding close button area)
+            let main_tab_rect = if tab.can_close {
+                // Exclude the close button area from the clickable tab area
+                egui::Rect::from_min_max(
+                    tab_rect.min,
+                    egui::Pos2::new(tab_rect.max.x - 20.0, tab_rect.max.y),
+                )
+            } else {
+                tab_rect
+            };
+
+            let tab_response = ui.interact(
+                main_tab_rect,
+                egui::Id::new(format!("tab_main_{}", tab.id)),
+                egui::Sense::click_and_drag(),
+            );
+
+            // Process close button click
+            if close_button_clicked {
+                self.tab_manager.close_tab(&tab.id);
+            }
+            // Process tab click (only if close button wasn't clicked)
+            else if tab_response.clicked() {
                 if self.tab_manager.is_split_active() {
                     self.tab_manager
                         .set_split_active_tab(&tab.id, self.last_used_split_pane);
@@ -274,60 +516,151 @@ impl StudyTimerApp {
                     self.tab_manager.set_active_tab(&tab.id);
                 }
             }
+            // Handle drag operations (only if no clicks happened)
+            else {
+                if tab_response.drag_started() {
+                    self.dragging_tab_id = Some(tab.id.clone());
+                    self.drag_start_pos = tab_response.interact_pointer_pos();
+                }
 
-            if response.drag_started() {
-                self.dragging_tab_id = Some(tab.id.clone());
-                self.drag_start_pos = response.interact_pointer_pos();
-            }
+                if tab_response.dragged() && self.dragging_tab_id == Some(tab.id.clone()) {
+                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
 
-            if response.dragged() && self.dragging_tab_id == Some(tab.id.clone()) {
-                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+                    if let Some(pointer_pos) = tab_response.interact_pointer_pos() {
+                        ui.painter().circle_filled(
+                            pointer_pos,
+                            8.0,
+                            colors.accent_color32().gamma_multiply(0.8),
+                        );
+                        ui.painter().circle_stroke(
+                            pointer_pos,
+                            8.0,
+                            egui::Stroke::new(2.0, colors.text_primary_color32()),
+                        );
+                    }
+                }
 
-                if let Some(pointer_pos) = response.interact_pointer_pos() {
-                    ui.painter().circle_filled(
-                        pointer_pos,
-                        8.0,
-                        colors.accent_color32().gamma_multiply(0.7),
-                    );
+                if tab_response.drag_released() && self.dragging_tab_id == Some(tab.id.clone()) {
+                    if let Some(drop_pos) = tab_response.interact_pointer_pos() {
+                        self.handle_tab_drop(drop_pos, &tab.id);
+                    }
+                    self.dragging_tab_id = None;
+                    self.drag_start_pos = None;
                 }
             }
 
-            if response.drag_released() && self.dragging_tab_id == Some(tab.id.clone()) {
-                if let Some(drop_pos) = response.interact_pointer_pos() {
-                    self.handle_tab_drop(drop_pos, &tab.id);
-                }
-                self.dragging_tab_id = None;
-                self.drag_start_pos = None;
-            }
-
+            // Drop zone indicator - only show during drag operations, no hover effects
             if self.dragging_tab_id.is_some() && self.dragging_tab_id != Some(tab.id.clone()) {
-                if response.hovered() {
-                    let rect = response.rect;
-                    ui.painter().rect_stroke(
-                        rect.expand(2.0),
-                        egui::Rounding::same(3.0),
-                        egui::Stroke::new(2.0, colors.accent_color32()),
-                    );
-
-                    if ui.input(|i| i.pointer.any_released()) {
-                        if let Some(dragging_id) = &self.dragging_tab_id {
-                            self.tab_manager.reorder_tab(dragging_id, index);
-                        }
+                if ui.input(|i| i.pointer.any_released()) && tab_response.hovered() {
+                    if let Some(dragging_id) = &self.dragging_tab_id {
+                        self.tab_manager.reorder_tab(dragging_id, index);
                     }
                 }
             }
-
-            if tab.can_close {
-                let close_button = egui::Button::new("×")
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE)
-                    .min_size(egui::Vec2::new(16.0, 16.0));
-
-                if ui.add(close_button).clicked() {
-                    self.tab_manager.close_tab(&tab.id);
-                }
-            }
         });
+    }
+
+    fn render_weather_widget_compact(&mut self, ui: &mut egui::Ui) {
+        let colors = self.settings.get_current_colors();
+
+        ui.push_id("weather_widget_compact", |ui| {
+            let weather_rect = ui.allocate_space(egui::Vec2::new(80.0, 24.0)).1;
+
+            // Use navigation background color to match the navbar
+            let weather_frame = egui::Frame::default()
+                .fill(colors.navigation_background_color32()) // Back to navigation background color
+                .inner_margin(egui::Margin::same(4.0))
+                .rounding(egui::Rounding::same(3.0));
+
+            ui.allocate_ui_at_rect(weather_rect, |ui| {
+                weather_frame.show(ui, |ui| {
+                    if self.weather_widget.render(ui) {
+                        let _ = self.weather_widget.save();
+                    }
+                });
+            });
+        });
+    }
+
+    fn render_settings_tab_button(&mut self, ui: &mut egui::Ui) {
+        let colors = self.settings.get_current_colors();
+
+        let settings_tab_info = self
+            .tab_manager
+            .tabs
+            .iter()
+            .find(|tab| tab.tab_type == Tab::Settings)
+            .map(|tab| (tab.id.clone(), tab.id == self.tab_manager.active_tab_id));
+
+        if let Some((settings_tab_id, is_active)) = settings_tab_info {
+            let (button_color, text_color, stroke_width) = if is_active {
+                (
+                    colors.active_tab_color32(),
+                    colors.text_primary_color32(),
+                    2.0,
+                )
+            } else {
+                (
+                    colors.background_color32(),
+                    colors.text_secondary_color32(),
+                    1.0,
+                )
+            };
+
+            ui.push_id("settings_button", |ui| {
+                // Use same dimensions as regular tabs
+                let tab_width = 90.0;
+                let tab_height = 50.0;
+                let button_rect = ui.allocate_space(egui::Vec2::new(tab_width, tab_height)).1;
+
+                // Draw button background with rounded corners (same as tabs)
+                ui.painter()
+                    .rect_filled(button_rect, egui::Rounding::same(6.0), button_color);
+
+                // Draw border/stroke (same as tabs)
+                ui.painter().rect_stroke(
+                    button_rect,
+                    egui::Rounding::same(6.0),
+                    egui::Stroke::new(stroke_width, colors.accent_color32()),
+                );
+
+                // Draw settings icon at the top center
+                let icon_y = button_rect.min.y + 12.0;
+                ui.painter().text(
+                    egui::Pos2::new(button_rect.center().x, icon_y),
+                    egui::Align2::CENTER_TOP,
+                    "⚙", // Use gear symbol instead of emoji
+                    egui::FontId::new(16.0, egui::FontFamily::Proportional),
+                    text_color,
+                );
+
+                // Draw "Settings" text at the bottom center
+                let text_y = button_rect.max.y - 8.0;
+                ui.painter().text(
+                    egui::Pos2::new(button_rect.center().x, text_y),
+                    egui::Align2::CENTER_BOTTOM,
+                    "Settings",
+                    egui::FontId::new(10.0, egui::FontFamily::Proportional),
+                    text_color,
+                );
+
+                // Handle button interaction
+                let button_response = ui.interact(
+                    button_rect,
+                    egui::Id::new("settings_button_interact"),
+                    egui::Sense::click(),
+                );
+
+                if button_response.clicked() {
+                    if self.tab_manager.is_split_active() {
+                        self.tab_manager
+                            .set_split_active_tab(&settings_tab_id, self.last_used_split_pane);
+                    } else {
+                        self.tab_manager.set_active_tab(&settings_tab_id);
+                    }
+                }
+            });
+        }
     }
 
     fn handle_tab_drop(&mut self, _drop_pos: egui::Pos2, _tab_id: &str) {
@@ -348,86 +681,139 @@ impl StudyTimerApp {
 
             match self.settings.navigation_layout {
                 NavigationLayout::Horizontal => {
+                    // Enhanced horizontal navigation
                     let nav_frame = egui::Frame::default()
                         .fill(colors.navigation_background_color32())
-                        .inner_margin(egui::Margin::same(8.0));
+                        .shadow(egui::epaint::Shadow {
+                            extrusion: 3.0,
+                            color: egui::Color32::from_black_alpha(20),
+                        })
+                        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
+                        .rounding(egui::Rounding::same(8.0));
 
                     nav_frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            for config in enabled_tabs {
+                            for (i, config) in enabled_tabs.iter().enumerate() {
                                 let is_current = self.current_tab == config.tab_type;
                                 let display_name = config.get_display_name();
 
-                                let button_color = if is_current {
-                                    colors.active_tab_color32()
+                                let (button_color, text_color, stroke_width) = if is_current {
+                                    (
+                                        colors.active_tab_color32(),
+                                        colors.text_primary_color32(),
+                                        2.0,
+                                    )
                                 } else {
-                                    colors.inactive_tab_color32()
-                                };
-
-                                let text_color = if is_current {
-                                    colors.text_primary_color32()
-                                } else {
-                                    colors.text_secondary_color32()
+                                    (
+                                        colors.inactive_tab_color32().gamma_multiply(0.6),
+                                        colors.text_secondary_color32(),
+                                        1.0,
+                                    )
                                 };
 
                                 let button = egui::Button::new(
-                                    egui::RichText::new(&display_name).color(text_color),
+                                    egui::RichText::new(&display_name)
+                                        .color(text_color)
+                                        .size(if is_current { 13.0 } else { 12.0 }),
                                 )
                                 .fill(button_color)
-                                .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
+                                .stroke(egui::Stroke::new(stroke_width, colors.accent_color32()))
+                                .rounding(egui::Rounding::same(8.0))
+                                .min_size(egui::Vec2::new(80.0, 36.0));
 
                                 if ui.add(button).clicked() {
                                     self.current_tab = config.tab_type.clone();
+                                }
+
+                                // Add separator between tabs
+                                if i < enabled_tabs.len() - 1 {
+                                    ui.add_space(6.0);
                                 }
                             }
                         });
                     });
                 }
                 NavigationLayout::Vertical => {
+                    // Enhanced vertical navigation
                     egui::SidePanel::left("navigation_panel")
                         .resizable(true)
-                        .default_width(150.0)
-                        .width_range(120.0..=250.0)
-                        .frame(egui::Frame::default().fill(colors.navigation_background_color32()))
+                        .default_width(160.0)
+                        .width_range(140.0..=280.0)
+                        .frame(
+                            egui::Frame::default()
+                                .fill(colors.navigation_background_color32())
+                                .shadow(egui::epaint::Shadow {
+                                    extrusion: 4.0,
+                                    color: egui::Color32::from_black_alpha(25),
+                                })
+                                .inner_margin(egui::Margin::same(12.0))
+                                .rounding(egui::Rounding::same(0.0)),
+                        )
                         .show_inside(ui, |ui| {
                             ui.vertical(|ui| {
+                                // Enhanced header
                                 ui.heading(
-                                    egui::RichText::new("Navigation")
-                                        .color(colors.text_primary_color32()),
+                                    egui::RichText::new("🎯 Navigation")
+                                        .color(colors.text_primary_color32())
+                                        .size(16.0),
                                 );
+                                ui.add_space(4.0);
                                 ui.separator();
-                                ui.add_space(5.0);
+                                ui.add_space(8.0);
 
                                 for config in enabled_tabs {
                                     let is_current = self.current_tab == config.tab_type;
                                     let display_name = config.get_display_name();
 
-                                    let button_color = if is_current {
-                                        colors.active_tab_color32()
+                                    let (button_color, text_color, stroke_width) = if is_current {
+                                        (
+                                            colors.active_tab_color32(),
+                                            colors.text_primary_color32(),
+                                            2.0,
+                                        )
                                     } else {
-                                        egui::Color32::TRANSPARENT
+                                        (
+                                            egui::Color32::TRANSPARENT,
+                                            colors.text_secondary_color32(),
+                                            0.0,
+                                        )
                                     };
 
-                                    let text_color = if is_current {
-                                        colors.text_primary_color32()
-                                    } else {
-                                        colors.text_secondary_color32()
+                                    // Tab icon
+                                    let tab_icon = match config.tab_type {
+                                        Tab::Timer => "⏱️",
+                                        Tab::Stats => "📊",
+                                        Tab::Record => "📝",
+                                        Tab::Graph => "📈",
+                                        Tab::Todo => "✅",
+                                        Tab::Calculator => "🧮",
+                                        Tab::Markdown => "📄",
+                                        Tab::Reminder => "🔔",
+                                        Tab::Terminal => "💻",
+                                        Tab::Flashcards => "🃏",
+                                        Tab::Settings => "⚙️",
                                     };
 
                                     let button = egui::Button::new(
-                                        egui::RichText::new(&display_name).color(text_color),
+                                        egui::RichText::new(format!(
+                                            "{} {}",
+                                            tab_icon, &display_name
+                                        ))
+                                        .color(text_color)
+                                        .size(if is_current { 13.0 } else { 12.0 }),
                                     )
                                     .fill(button_color)
                                     .stroke(egui::Stroke::new(
-                                        if is_current { 2.0 } else { 0.0 },
+                                        stroke_width,
                                         colors.accent_color32(),
-                                    ));
+                                    ))
+                                    .rounding(egui::Rounding::same(8.0));
 
-                                    if ui.add_sized([ui.available_width(), 30.0], button).clicked()
+                                    if ui.add_sized([ui.available_width(), 36.0], button).clicked()
                                     {
                                         self.current_tab = config.tab_type.clone();
                                     }
-                                    ui.add_space(2.0);
+                                    ui.add_space(4.0);
                                 }
                             });
                         });
@@ -563,3 +949,4 @@ impl eframe::App for StudyTimerApp {
         self.save_on_exit();
     }
 }
+

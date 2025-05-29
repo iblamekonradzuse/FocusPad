@@ -20,33 +20,46 @@ pub fn display(
             let mut theme_changed = false;
             let old_preset = settings.theme_preset.clone();
 
-            ui.horizontal_wrapped(|ui| {
-                for preset in PresetTheme::all_presets() {
-                    let is_selected = settings.theme_preset == preset;
+            // Display themes in 2 rows with 6 themes each
+            let all_presets = PresetTheme::all_presets();
+            let themes_per_row = 6;
 
-                    // Create a colored button for visual preview
-                    let colors = if preset == PresetTheme::Custom {
-                        settings.custom_colors.clone()
-                    } else {
-                        preset.get_colors()
-                    };
+            for row in 0..2 {
+                ui.horizontal_wrapped(|ui| {
+                    let start_idx = row * themes_per_row;
+                    let end_idx = (start_idx + themes_per_row).min(all_presets.len());
 
-                    let bg_color = colors.background_color32();
+                    for preset in &all_presets[start_idx..end_idx] {
+                        let is_selected = settings.theme_preset == *preset;
 
-                    let button = egui::Button::new(preset.name())
-                        .fill(if is_selected {
-                            colors.active_tab_color32()
+                        // Create a colored button for visual preview
+                        let colors = if *preset == PresetTheme::Custom {
+                            settings.custom_colors.clone()
                         } else {
-                            bg_color
-                        })
-                        .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
+                            preset.get_colors()
+                        };
 
-                    if ui.add(button).clicked() {
-                        settings.theme_preset = preset;
-                        theme_changed = true;
+                        let bg_color = colors.background_color32();
+
+                        let button = egui::Button::new(preset.name())
+                            .fill(if is_selected {
+                                colors.active_tab_color32()
+                            } else {
+                                bg_color
+                            })
+                            .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
+
+                        if ui.add(button).clicked() {
+                            settings.theme_preset = preset.clone();
+                            theme_changed = true;
+                        }
                     }
+                });
+
+                if row == 0 {
+                    ui.add_space(5.0);
                 }
-            });
+            }
 
             // Custom color editor (only show when Custom is selected)
             if settings.theme_preset == PresetTheme::Custom {
@@ -166,47 +179,6 @@ pub fn display(
                     status.show(&format!("Failed to save theme: {}", e));
                 } else {
                     status.show("Theme saved successfully!");
-                }
-            }
-        });
-
-        ui.add_space(20.0);
-
-        // Navigation Layout Section
-        ui.group(|ui| {
-            ui.heading("📐 Navigation Layout");
-            ui.add_space(10.0);
-
-            let mut layout_changed = false;
-
-            ui.horizontal(|ui| {
-                if ui
-                    .radio_value(
-                        &mut settings.navigation_layout,
-                        NavigationLayout::Horizontal,
-                        "Horizontal",
-                    )
-                    .clicked()
-                {
-                    layout_changed = true;
-                }
-                if ui
-                    .radio_value(
-                        &mut settings.navigation_layout,
-                        NavigationLayout::Vertical,
-                        "Vertical",
-                    )
-                    .clicked()
-                {
-                    layout_changed = true;
-                }
-            });
-
-            if layout_changed {
-                if let Err(e) = settings.save() {
-                    status.show(&format!("Failed to save layout setting: {}", e));
-                } else {
-                    status.show("Layout setting saved!");
                 }
             }
         });
@@ -368,3 +340,4 @@ pub fn display(
         });
     });
 }
+

@@ -86,6 +86,7 @@ pub struct TabManagerState {
     pub tabs: Vec<TabInstance>,
     pub active_tab_id: String,
     pub split_pane: Option<SplitPane>,
+    pub last_active_tab_id: Option<String>,
 }
 
 impl Default for TabManagerState {
@@ -97,6 +98,7 @@ impl Default for TabManagerState {
             tabs: vec![default_tab, TabInstance::new(Tab::Settings)],
             active_tab_id,
             split_pane: None,
+            last_active_tab_id: None,
         }
     }
 }
@@ -147,6 +149,13 @@ impl TabManagerState {
                     state.active_tab_id = first_tab.id.clone();
                 }
             }
+
+            // Validate last active tab exists (if set)
+            if let Some(ref last_tab_id) = state.last_active_tab_id {
+                if !state.tabs.iter().any(|t| t.id == *last_tab_id) {
+                    state.last_active_tab_id = None;
+                }
+            }
         }
 
         Ok(state)
@@ -156,6 +165,7 @@ impl TabManagerState {
 pub struct TabManager {
     pub tabs: Vec<TabInstance>,
     pub active_tab_id: String,
+    pub last_active_tab_id: Option<String>,
     pub split_pane: Option<SplitPane>,
     pub tab_data: HashMap<String, Box<dyn std::any::Any>>, // Store tab-specific data
 }
@@ -184,12 +194,14 @@ impl TabManager {
                 tabs,
                 active_tab_id,
                 split_pane: None,
+                last_active_tab_id: None,
             }
         });
 
         Self {
             tabs: state.tabs,
             active_tab_id: state.active_tab_id,
+            last_active_tab_id: state.last_active_tab_id,
             split_pane: state.split_pane,
             tab_data: HashMap::new(),
         }
@@ -200,6 +212,7 @@ impl TabManager {
             tabs: self.tabs.clone(),
             active_tab_id: self.active_tab_id.clone(),
             split_pane: self.split_pane.clone(),
+            last_active_tab_id: self.last_active_tab_id.clone(),
         };
 
         if let Err(e) = state.save() {
@@ -211,7 +224,11 @@ impl TabManager {
         let new_tab = TabInstance::new(tab_type);
         let tab_id = new_tab.id.clone();
         self.tabs.push(new_tab);
+
+        // Update last active tab before changing active tab
+        self.last_active_tab_id = Some(self.active_tab_id.clone());
         self.active_tab_id = tab_id.clone();
+
         self.save_state();
         tab_id
     }
@@ -220,7 +237,11 @@ impl TabManager {
         let new_tab = TabInstance::new_with_file(tab_type, file_path);
         let tab_id = new_tab.id.clone();
         self.tabs.push(new_tab);
+
+        // Update last active tab before changing active tab
+        self.last_active_tab_id = Some(self.active_tab_id.clone());
         self.active_tab_id = tab_id.clone();
+
         self.save_state();
         tab_id
     }
@@ -245,9 +266,26 @@ impl TabManager {
 
             // Update active tab if necessary
             if self.active_tab_id == tab_id {
-                if let Some(next_tab) = self.tabs.first() {
-                    self.active_tab_id = next_tab.id.clone();
+                // Try to go to the next tab, or previous if it was the last tab
+                let next_tab_id = if pos < self.tabs.len() {
+                    // Go to the tab that's now at the same position (next tab)
+                    self.tabs[pos].id.clone()
+                } else if !self.tabs.is_empty() {
+                    // Was the last tab, go to the new last tab
+                    self.tabs[self.tabs.len() - 1].id.clone()
+                } else {
+                    // No tabs left, will be handled below
+                    String::new()
+                };
+
+                if !next_tab_id.is_empty() {
+                    self.active_tab_id = next_tab_id;
                 }
+            }
+
+            // Update last active tab if it was the closed tab
+            if self.last_active_tab_id.as_ref() == Some(&tab_id.to_string()) {
+                self.last_active_tab_id = None;
             }
 
             // Ensure at least one tab exists
@@ -278,10 +316,80 @@ impl TabManager {
     }
 
     pub fn set_active_tab(&mut self, tab_id: &str) {
-        if self.tabs.iter().any(|t| t.id == tab_id) {
+        if self.tabs.iter().any(|t| t.id == tab_id) && self.active_tab_id != tab_id {
+            // Update last active tab before changing active tab
+            self.last_active_tab_id = Some(self.active_tab_id.clone());
             self.active_tab_id = tab_id.to_string();
             self.save_state();
         }
+    }
+
+    /// Switch to tab by index (0-based), returns true if successful
+    pub fn set_active_tab_by_index(&mut self, index: usize) -> bool {
+        if index < self.tabs.len() {
+            let new_tab_id = self.tabs[index].id.clone();
+            if self.active_tab_id != new_tab_id {
+                // Update last active tab before changing active tab
+                self.last_active_tab_id = Some(self.active_tab_id.clone());
+                self.active_tab_id = new_tab_id;
+                self.save_state();
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Switch to the last active tab
+    pub fn switch_to_last_tab(&mut self) -> bool {
+        if let Some(last_tab_id) = self.last_active_tab_id.clone() {
+            if self.tabs.iter().any(|t| t.id == last_tab_id) && self.active_tab_id != last_tab_id {
+                // Swap current and last active tabs
+                let current_active = self.active_tab_id.clone();
+                self.active_tab_id = last_tab_id;
+                self.last_active_tab_id = Some(current_active);
+                self.save_state();
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get the current active tab index
+    pub fn get_active_tab_index(&self) -> Option<usize> {
+        self.tabs.iter().position(|t| t.id == self.active_tab_id)
+    }
+
+    /// Navigate to next tab (wraps around)
+    pub fn next_tab(&mut self) {
+        if self.tabs.len() <= 1 {
+            return;
+        }
+
+        let current_index = self.get_active_tab_index().unwrap_or(0);
+        let next_index = if current_index + 1 >= self.tabs.len() {
+            0
+        } else {
+            current_index + 1
+        };
+
+        self.set_active_tab_by_index(next_index);
+    }
+
+    /// Navigate to previous tab (wraps around)
+    pub fn previous_tab(&mut self) {
+        if self.tabs.len() <= 1 {
+            return;
+        }
+
+        let current_index = self.get_active_tab_index().unwrap_or(0);
+        let prev_index = if current_index == 0 {
+            self.tabs.len() - 1
+        } else {
+            current_index - 1
+        };
+
+        self.set_active_tab_by_index(prev_index);
     }
 
     pub fn create_split(&mut self, direction: SplitDirection) {
@@ -427,3 +535,4 @@ impl TabManager {
         }
     }
 }
+
