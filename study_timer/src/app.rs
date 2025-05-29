@@ -563,4 +563,3 @@ impl eframe::App for StudyTimerApp {
         self.save_on_exit();
     }
 }
-

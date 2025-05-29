@@ -135,7 +135,7 @@ fn get_tab_description(tab_type: &Tab) -> &'static str {
         Tab::Stats => "View your study statistics and progress",
         Tab::Record => "Record and manage study sessions",
         Tab::Graph => "Visualize your study data with charts",
-        Tab::Todo => "Manage tasks and to-do items",
+        Tab::Todo => "Manage tasks, to-do items and Habits",
         Tab::Flashcards => "Anki like flashcards",
         Tab::Calculator => "Built-in calculator for quick calculations",
         Tab::Markdown => "Write and edit markdown documents",
@@ -144,4 +144,3 @@ fn get_tab_description(tab_type: &Tab) -> &'static str {
         Tab::Settings => "Configure application settings",
     }
 }
-

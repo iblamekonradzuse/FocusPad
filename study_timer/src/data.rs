@@ -1,7 +1,8 @@
 use crate::image_handler::ImageManager;
 use crate::ui::flashcard::Deck;
-use chrono::{Local, NaiveDate};
+use chrono::{Duration, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -19,6 +20,75 @@ pub struct Todo {
     pub text: String,
     pub completed: bool,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Habit {
+    pub id: u64,
+    pub name: String,
+    pub category: String,
+    pub created_at: String,
+    pub completion_dates: HashSet<String>, // Store dates as "YYYY-MM-DD" strings
+    pub target_frequency: HabitFrequency,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HabitFrequency {
+    Daily,
+    Weekly,
+    Custom(u32), // Every N days
+}
+
+impl Habit {
+    pub fn calculate_current_streak(&self) -> u32 {
+        let today = Local::now().date_naive();
+        let mut streak = 0;
+        let mut current_date = today;
+
+        // Check if today is completed (for ongoing streak)
+        let today_str = today.format("%Y-%m-%d").to_string();
+        let mut checking_today = true;
+
+        loop {
+            let date_str = current_date.format("%Y-%m-%d").to_string();
+
+            if self.completion_dates.contains(&date_str) {
+                streak += 1;
+                checking_today = false;
+            } else if !checking_today {
+                // If we've moved past today and hit a gap, break the streak
+                break;
+            } else {
+                // Today isn't completed, but we might have a streak ending yesterday
+                checking_today = false;
+            }
+
+            // Move to previous day
+            current_date = current_date - Duration::days(1);
+
+            // Don't go back more than a reasonable amount (e.g., 1 year)
+            if (today - current_date).num_days() > 365 {
+                break;
+            }
+        }
+
+        streak
+    }
+
+    pub fn get_completion_rate_last_n_days(&self, days: u32) -> f32 {
+        let today = Local::now().date_naive();
+        let mut completed_days = 0;
+
+        for i in 0..days {
+            let date = today - Duration::days(i as i64);
+            let date_str = date.format("%Y-%m-%d").to_string();
+            if self.completion_dates.contains(&date_str) {
+                completed_days += 1;
+            }
+        }
+
+        completed_days as f32 / days as f32
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +114,7 @@ pub enum NotificationPeriod {
 pub struct StudyData {
     pub sessions: Vec<StudySession>,
     pub todos: Vec<Todo>,
+    pub habits: Vec<Habit>,
     pub reminders: Vec<Reminder>,
     pub decks: Vec<Deck>,
     pub next_deck_id: u64,
@@ -57,6 +128,7 @@ impl StudyData {
             return Ok(StudyData {
                 sessions: Vec::new(),
                 todos: Vec::new(),
+                habits: Vec::new(),
                 reminders: Vec::new(),
                 decks: Vec::new(),
                 image_manager: ImageManager::new(),
@@ -154,6 +226,7 @@ impl StudyData {
             .sum()
     }
 
+    // Todo methods
     pub fn add_todo(&mut self, text: String) -> Result<(), Box<dyn std::error::Error>> {
         let now = Local::now();
         let todo = Todo {
@@ -216,6 +289,106 @@ impl StudyData {
         }
     }
 
+    // Habit methods
+    pub fn add_habit(
+        &mut self,
+        name: String,
+        category: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let now = Local::now();
+        let habit = Habit {
+            id: self.get_next_habit_id(),
+            name,
+            category,
+            created_at: now.format("%Y-%m-%d %H:%M:%S").to_string(),
+            completion_dates: HashSet::new(),
+            target_frequency: HabitFrequency::Daily,
+        };
+
+        self.habits.push(habit);
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn mark_habit_complete_today(&mut self, id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let today = Local::now().date_naive().format("%Y-%m-%d").to_string();
+
+        if let Some(habit) = self.habits.iter_mut().find(|h| h.id == id) {
+            habit.completion_dates.insert(today);
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    pub fn unmark_habit_complete(
+        &mut self,
+        id: u64,
+        date: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(habit) = self.habits.iter_mut().find(|h| h.id == id) {
+            habit.completion_dates.remove(&date);
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_habit(&mut self, id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.habits.retain(|h| h.id != id);
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn clear_completed_habits(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let today = Local::now().date_naive().format("%Y-%m-%d").to_string();
+        self.habits.retain(|h| !h.completion_dates.contains(&today));
+        self.save()?;
+        Ok(())
+    }
+
+    pub fn get_habit_categories(&self) -> Vec<String> {
+        let mut categories: Vec<String> = self
+            .habits
+            .iter()
+            .map(|h| h.category.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        categories.sort();
+        categories
+    }
+
+    pub fn get_habits_by_category(&self, category: &str) -> Vec<&Habit> {
+        self.habits
+            .iter()
+            .filter(|h| h.category == category)
+            .collect()
+    }
+
+    pub fn get_habit_stats(&self, id: u64) -> Option<HabitStats> {
+        if let Some(habit) = self.habits.iter().find(|h| h.id == id) {
+            let current_streak = habit.calculate_current_streak();
+            let total_completions = habit.completion_dates.len();
+            let completion_rate_7_days = habit.get_completion_rate_last_n_days(7);
+            let completion_rate_30_days = habit.get_completion_rate_last_n_days(30);
+
+            Some(HabitStats {
+                current_streak,
+                total_completions,
+                completion_rate_7_days,
+                completion_rate_30_days,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn get_next_habit_id(&self) -> u64 {
+        let todo_max = self.todos.iter().map(|t| t.id).max().unwrap_or(0);
+        let habit_max = self.habits.iter().map(|h| h.id).max().unwrap_or(0);
+        std::cmp::max(todo_max, habit_max) + 1
+    }
+
+    // Reminder methods
     pub fn add_reminder(
         &mut self,
         title: String,
@@ -299,5 +472,13 @@ impl StudyData {
             .flat_map(|deck| deck.get_due_cards(true))
             .count()
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct HabitStats {
+    pub current_streak: u32,
+    pub total_completions: usize,
+    pub completion_rate_7_days: f32,
+    pub completion_rate_30_days: f32,
 }
 

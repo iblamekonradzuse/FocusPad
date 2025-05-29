@@ -427,4 +427,3 @@ impl TabManager {
         }
     }
 }
-
