@@ -210,7 +210,7 @@ impl TabConfig {
             crate::app::Tab::Stats => "Statistics".to_string(),
             crate::app::Tab::Record => "Record".to_string(),
             crate::app::Tab::Graph => "Graph".to_string(),
-            crate::app::Tab::Todo => "Todo".to_string(),
+            crate::app::Tab::Todo => "Todo and Habits".to_string(),
             crate::app::Tab::Flashcards => "Flashcards".to_string(),
             crate::app::Tab::Calculator => "Calculator".to_string(),
             crate::app::Tab::Markdown => "Markdown".to_string(),

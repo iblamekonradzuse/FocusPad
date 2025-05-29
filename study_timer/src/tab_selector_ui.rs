@@ -63,19 +63,58 @@ impl TabSelectorUI {
 
                         let button_size = egui::Vec2::new(120.0, 80.0);
 
-                        let button = egui::Button::new(format!("{}\n{}", icon, display_name))
-                            .min_size(button_size)
-                            .fill(colors.panel_background_color32())
-                            .stroke(egui::Stroke::new(1.0, colors.accent_color32()));
+                        // Create a custom button with centered content
+                        let (rect, response) =
+                            ui.allocate_exact_size(button_size, egui::Sense::click());
 
-                        let response = ui.add(button);
+                        let visuals = ui.style().interact(&response);
+                        let fill_color = if response.hovered() {
+                            colors.accent_color32().linear_multiply(0.8)
+                        } else {
+                            colors.panel_background_color32()
+                        };
+
+                        ui.painter()
+                            .rect_filled(rect, egui::Rounding::same(4.0), fill_color);
+
+                        ui.painter().rect_stroke(
+                            rect,
+                            egui::Rounding::same(4.0),
+                            egui::Stroke::new(1.0, colors.accent_color32()),
+                        );
+
+                        // Draw centered emoji
+                        let emoji_rect = egui::Rect::from_center_size(
+                            rect.center() - egui::Vec2::new(0.0, 12.0),
+                            egui::Vec2::new(32.0, 32.0),
+                        );
+                        ui.painter().text(
+                            emoji_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            icon,
+                            egui::FontId::proportional(24.0),
+                            visuals.text_color(),
+                        );
+
+                        // Draw centered text
+                        let text_rect = egui::Rect::from_center_size(
+                            rect.center() + egui::Vec2::new(0.0, 15.0),
+                            egui::Vec2::new(110.0, 20.0),
+                        );
+                        ui.painter().text(
+                            text_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            display_name,
+                            egui::FontId::proportional(11.0),
+                            visuals.text_color(),
+                        );
 
                         if response.clicked() {
                             selected_tab = Some(tab_type.clone());
                             self.hide();
                         }
 
-                        // Add tooltip with description - fixed to check the specific button response
+                        // Add tooltip with description
                         if response.hovered() {
                             egui::show_tooltip(
                                 ctx,
