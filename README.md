@@ -11,22 +11,22 @@ Ensure you have Rust installed (version 1.70.0 or higher recommended)
 Clone the repository:
 ```bash
 git clone https://github.com/yourusername/study-timer.git
-``` 
-Navigate to the project directory:```
+```
 
+Navigate to the project directory:
 ```bash
 cd study-timer
-```  
+```
 
-    Build the application:
-```bash 
+Build the application:
+```bash
 cargo build --release
-```  
-    Run the application:
+```
 
+Run the application:
 ```bash
 cargo run --release
-```  
+```
 
 ## Key Features
 
@@ -66,17 +66,17 @@ cargo run --release
 Choose from a selection of themes:
 
 ### Built-in Themes
-- **Gruvbox**: Retro groove color scheme with warm, earthy tones
-- **Dark**: Clean dark theme for comfortable viewing
-- **Ocean**: Blue-toned theme inspired by ocean depths
-- **Forest**: Green-themed design with natural colors
-- **Sunset**: Warm orange and red color palette
-- **Purple**: Elegant purple-toned theme
-- **Nord**: Arctic, north-bluish clean and elegant theme
-- **Rose Pine**: All natural pine, faux fur and a bit of soho vibes
-- **Monokai**: The classic dark theme beloved by developers
-- **Dracula**: Dark theme with vibrant colors and excellent contrast
-- **Custom**: Create your own themes with full color customization
+- **Gruvbox**
+- **Dark**
+- **Ocean**
+- **Forest**
+- **Sunset**
+- **Purple**
+- **Nord**
+- **Rose Pine**
+- **Monokai**
+- **Dracula**
+- **Custom**
 
 ## Advanced Features
 
