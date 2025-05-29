@@ -46,7 +46,6 @@ impl Habit {
         let mut current_date = today;
 
         // Check if today is completed (for ongoing streak)
-        let today_str = today.format("%Y-%m-%d").to_string();
         let mut checking_today = true;
 
         loop {
@@ -75,6 +74,7 @@ impl Habit {
         streak
     }
 
+    #[allow(dead_code)]
     pub fn get_completion_rate_last_n_days(&self, days: u32) -> f32 {
         let today = Local::now().date_naive();
         let mut completed_days = 0;
@@ -320,6 +320,7 @@ impl StudyData {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn unmark_habit_complete(
         &mut self,
         id: u64,
@@ -357,6 +358,7 @@ impl StudyData {
         categories
     }
 
+    #[allow(dead_code)]
     pub fn get_habits_by_category(&self, category: &str) -> Vec<&Habit> {
         self.habits
             .iter()
@@ -364,6 +366,7 @@ impl StudyData {
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn get_habit_stats(&self, id: u64) -> Option<HabitStats> {
         if let Some(habit) = self.habits.iter().find(|h| h.id == id) {
             let current_streak = habit.calculate_current_streak();
@@ -474,6 +477,7 @@ impl StudyData {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct HabitStats {
     pub current_streak: u32,

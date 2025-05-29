@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Study Timer Application is a comprehensive productivity tool designed to enhance study sessions and time management. It combines a timer with various productivity features to create an all-in-one workspace for students, researchers, and professionals.
+FocusPad is a comprehensive productivity tool designed to enhance study sessions and time management. It combines a timer with various productivity features to create an all-in-one workspace for students, researchers, and professionals.
 
 ## Installation
 
@@ -10,12 +10,12 @@ Ensure you have Rust installed (version 1.70.0 or higher recommended)
 
 Clone the repository:
 ```bash
-git clone https://github.com/yourusername/study-timer.git
+git clone git@github.com:iblamekonradzuse/FocusPad.git
 ```
 
 Navigate to the project directory:
 ```bash
-cd study-timer
+cd FocusPad
 ```
 
 Build the application:

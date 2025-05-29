@@ -325,6 +325,7 @@ impl TabManager {
     }
 
     /// Switch to tab by index (0-based), returns true if successful
+    #[allow(dead_code)]
     pub fn set_active_tab_by_index(&mut self, index: usize) -> bool {
         if index < self.tabs.len() {
             let new_tab_id = self.tabs[index].id.clone();
@@ -356,11 +357,13 @@ impl TabManager {
     }
 
     /// Get the current active tab index
+    #[allow(dead_code)]
     pub fn get_active_tab_index(&self) -> Option<usize> {
         self.tabs.iter().position(|t| t.id == self.active_tab_id)
     }
 
     /// Navigate to next tab (wraps around)
+    #[allow(dead_code)]
     pub fn next_tab(&mut self) {
         if self.tabs.len() <= 1 {
             return;
@@ -377,6 +380,7 @@ impl TabManager {
     }
 
     /// Navigate to previous tab (wraps around)
+    #[allow(dead_code)]
     pub fn previous_tab(&mut self) {
         if self.tabs.len() <= 1 {
             return;

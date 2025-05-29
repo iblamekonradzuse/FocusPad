@@ -175,8 +175,9 @@ impl PresetTheme {
     }
 
     /// Get themes arranged in rows for UI display (2 rows x 6 themes each)
+    #[allow(dead_code)]
     pub fn get_theme_rows() -> Vec<Vec<PresetTheme>> {
-        let all_themes = Self::all_presets();
+        let _all_themes = Self::all_presets();
         let mut rows = Vec::new();
 
         // First row - 6 themes
@@ -522,4 +523,3 @@ impl AppSettings {
         }
     }
 }
-

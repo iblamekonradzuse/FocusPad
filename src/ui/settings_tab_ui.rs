@@ -1,5 +1,5 @@
 use crate::app::{StatusMessage, Tab};
-use crate::settings::{AppSettings, ColorTheme, NavigationLayout, PresetTheme};
+use crate::settings::{AppSettings, ColorTheme, PresetTheme};
 use eframe::egui::{self};
 
 pub fn display(
@@ -340,4 +340,3 @@ pub fn display(
         });
     });
 }
-
