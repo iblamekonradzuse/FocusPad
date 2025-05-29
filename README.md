@@ -1,4 +1,4 @@
-# Study Timer Application
+# FocusPad
 
 ## Overview
 
