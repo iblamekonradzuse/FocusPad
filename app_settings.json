@@ -27,12 +27,12 @@
       "custom_name": null
     },
     {
-      "tab_type": "Reminder",
+      "tab_type": "Flashcards",
       "enabled": true,
       "custom_name": null
     },
     {
-      "tab_type": "Flashcards",
+      "tab_type": "Reminder",
       "enabled": true,
       "custom_name": null
     },
@@ -57,7 +57,7 @@
       "custom_name": null
     }
   ],
-  "theme_preset": "RosePine",
+  "theme_preset": "Nord",
   "custom_colors": {
     "background": [
       32,
